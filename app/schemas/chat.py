@@ -1,14 +1,48 @@
-"""Pydantic schemas for chat data."""
+"""Pydantic schemas for the user-curated chat workspace."""
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
-class ChatOut(BaseModel):
+# ── Added chats (curated list, persisted in DB) ────────────────
+class AddChatRequest(BaseModel):
+    # @username, t.me/username, or a numeric Telegram ID
+    identifier: str = Field(min_length=1, max_length=100)
+
+
+class AddedChatOut(BaseModel):
     id: int
+    peer_id: int
+    peer_type: str
+    username: str | None = None
     title: str
-    unread_count: int = 0
-    last_message: str | None = None
+    added_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class ChatListResponse(BaseModel):
     telegram_linked: bool
-    chats: list[ChatOut] = Field(default_factory=list)
+    chats: list[AddedChatOut] = Field(default_factory=list)
+
+
+# ── Messages ────────────────────────────────────────────────────
+class MessageOut(BaseModel):
+    id: int
+    text: str | None = None
+    out: bool = False              # True → sent by the current user
+    sender_id: int | None = None
+    date: str | None = None        # ISO-8601
+
+
+class MessageListResponse(BaseModel):
+    chat: AddedChatOut
+    messages: list[MessageOut] = Field(default_factory=list)
+
+
+class SendMessageRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4096)
+
+
+class SentMessageResponse(BaseModel):
+    message: MessageOut

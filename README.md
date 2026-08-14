@@ -13,7 +13,10 @@ JS on the frontend — no build step required.
   2FA password, via Telethon
 - **Portable sessions** — Telegram sessions stored as `StringSession` in the
   database; no `.session` files, survives restarts and redeploys
-- **Chat list** — fetches your dialogs (title, unread count, last message)
+- **Curated chat workspace** — you only see what YOU add: drop any @username or
+  numeric Telegram ID into the app and it stays in your personal list, persisted
+  in the database (never the whole dialogs dump)
+- **Messaging** — read the last 20 messages of an added chat and send new ones
 - **Flexible database** — SQLite out of the box, PostgreSQL-ready (Neon, Supabase…)
 - **Clean API** — typed schemas, proper HTTP status codes, interactive docs at `/docs`
 
@@ -57,7 +60,11 @@ number from the dashboard.
 | GET    | `/api/auth/me`              | Current account info                     |
 | POST   | `/api/auth/telegram/send-code`   | Request Telegram login code         |
 | POST   | `/api/auth/telegram/verify-code` | Verify code / 2FA, stores session   |
-| GET    | `/api/chats/`               | List Telegram dialogs (linked users)     |
+| GET    | `/api/chats/`               | List MY added chats (from the database)  |
+| POST   | `/api/chats/`               | Add a chat by @username / numeric ID     |
+| DELETE | `/api/chats/{id}`           | Remove a chat from my list               |
+| GET    | `/api/chats/{id}/messages`  | Last 20 messages of an added chat        |
+| POST   | `/api/chats/{id}/messages`  | Send a message to an added chat          |
 | GET    | `/healthz`                  | Liveness probe                           |
 
 ## Project structure
@@ -72,7 +79,7 @@ telegram-web-lite/
 │   │   ├── security.py     # Argon2id/bcrypt password hashing (pwdlib)
 │   │   ├── telegram.py     # Telethon client manager + error mapping
 │   │   └── templating.py   # Shared Jinja2 environment
-│   ├── models/user.py      # User ORM model (typed, SQLAlchemy 2.0 style)
+│   ├── models/             # User + AddedChat ORM models (typed, SA 2.0 style)
 │   ├── schemas/            # Request/response models (Pydantic v2)
 │   ├── routers/            # views / auth / chats / shared dependencies
 │   ├── static/             # css + vanilla js

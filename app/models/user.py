@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -31,6 +31,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    added_chats = relationship(
+        "AddedChat", back_populates="owner", cascade="all, delete-orphan"
     )
 
     @property

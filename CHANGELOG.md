@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.2.0] — 2026-08-14 — Curated chat workspace
+
+### Changed
+- **No more full dialog dump.** The dashboard no longer lists every Telegram
+  chat/group/channel. Users see only the peers they explicitly added — an
+  empty, clean workspace on first use instead of the whole account.
+
+### Added
+- `AddedChat` model + `added_chats` table: user-added peers persisted in the
+  database (`peer_id`, `access_hash`, `peer_type`, `username`, `title`) with a
+  per-user uniqueness constraint; cascade-deleted with the account.
+- `POST /api/chats/` — resolve any @username (works for anyone) or numeric ID
+  (people you've interacted with) via Telegram, then save it to the list.
+- `DELETE /api/chats/{id}` — remove a chat from the list (Telegram untouched).
+- `GET /api/chats/{id}/messages` — exactly the last 20 messages (by design).
+- `POST /api/chats/{id}/messages` — send a text message to the added peer.
+- Telethon `resolve_peer` / `fetch_messages` / `send_message` built on
+  `InputPeer` reconstruction from stored access hashes (StringSession keeps no
+  entity cache); blocked-user / write-forbidden errors mapped to clean 403s.
+- Redesigned chat UI: sidebar with avatars and usernames, inline add form,
+  message bubbles with timestamps, composer, refresh, per-chat delete,
+  elegant empty states.
+
 ## [1.1.1] — 2026-08-14 — Zero-hassle session persistence
 
 ### Fixed

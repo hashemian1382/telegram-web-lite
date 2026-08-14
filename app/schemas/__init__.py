@@ -7,7 +7,15 @@ from app.schemas.auth import (
     UserRegister,
     VerifyCodeRequest,
 )
-from app.schemas.chat import ChatListResponse, ChatOut
+from app.schemas.chat import (
+    AddChatRequest,
+    AddedChatOut,
+    ChatListResponse,
+    MessageListResponse,
+    MessageOut,
+    SendMessageRequest,
+    SentMessageResponse,
+)
 
 __all__ = [
     "CodeSentResponse",
@@ -17,6 +25,11 @@ __all__ = [
     "UserOut",
     "UserRegister",
     "VerifyCodeRequest",
+    "AddChatRequest",
+    "AddedChatOut",
     "ChatListResponse",
-    "ChatOut",
+    "MessageListResponse",
+    "MessageOut",
+    "SendMessageRequest",
+    "SentMessageResponse",
 ]
