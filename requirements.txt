@@ -1,0 +1,13 @@
+# Tested on Python 3.11–3.13 (August 2026 release set)
+fastapi>=0.141.1
+uvicorn[standard]>=0.52.3
+telethon>=1.44.0
+jinja2>=3.1.6
+python-dotenv>=1.2.2
+pydantic>=2.13.4
+pydantic-settings>=2.15.0
+sqlalchemy>=2.0.52
+psycopg2-binary>=2.9.12        # PostgreSQL driver (e.g. Neon)
+pwdlib[argon2,bcrypt]>=0.3.1   # password hashing (replaces abandoned passlib)
+itsdangerous>=2.2.0            # signed session cookies (Starlette SessionMiddleware)
+python-multipart>=0.0.32       # form parsing (includes latest security fixes)

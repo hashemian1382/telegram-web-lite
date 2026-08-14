@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Telegram Web Lite - project specific
+.env
+*.db
+*.sqlite3
+sessions/
+*.session
+*.session-journal
+__pycache__/
+venv/
+.venv/

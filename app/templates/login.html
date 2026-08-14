@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Telegram Web Lite{% endblock %}
+{% block content %}
+<div class="flex flex-1 items-center justify-center p-4" data-page="login">
+    <div class="w-full max-w-md">
+        <h1 class="text-2xl font-bold text-center mb-1">✈️ Telegram Web Lite</h1>
+        <p class="text-center text-gray-500 mb-6">Sign in to your account to continue</p>
+
+        <div id="message" class="hidden mb-4"></div>
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex mb-6 border-b">
+                <button id="tab-login" class="flex-1 pb-2 font-semibold border-b-2 border-blue-500 text-blue-600">Sign in</button>
+                <button id="tab-register" class="flex-1 pb-2 font-semibold border-b-2 border-transparent text-gray-500">Create account</button>
+            </div>
+
+            <form id="login-form" class="space-y-4">
+                <input name="username" type="text" placeholder="Username" required autocomplete="username"
+                       class="w-full p-2.5 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <input name="password" type="password" placeholder="Password" required autocomplete="current-password"
+                       class="w-full p-2.5 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold p-2.5 rounded transition">
+                    Sign in
+                </button>
+            </form>
+
+            <form id="register-form" class="space-y-4 hidden">
+                <input name="username" type="text" placeholder="Username (3–50 chars, letters/digits/._-)" required autocomplete="username"
+                       class="w-full p-2.5 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <input name="password" type="password" placeholder="Password (min. 8 characters)" required minlength="8" autocomplete="new-password"
+                       class="w-full p-2.5 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold p-2.5 rounded transition">
+                    Create account
+                </button>
+                <p class="text-xs text-gray-500">After creating your account, sign in — then link your Telegram number from the dashboard.</p>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
