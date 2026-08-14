@@ -19,9 +19,10 @@ network dependencies.
   in the database (never the whole dialogs dump)
 - **Messaging** — read the last 20 messages of an added chat and send new ones;
   incoming messages appear automatically (incremental refresh every 2 s)
-- **Photos & files** — send photos/files with captions; photo previews right in
-  the bubbles, full files stream to your browser straight from Telegram
-  (nothing buffered on the server)
+- **Photos & files** — send photos/files with captions; images go as real
+  Telegram **photos** by default (with a "Photo / File" toggle to send one as a
+  document instead); photo previews right in the bubbles, full files stream to
+  your browser straight from Telegram (nothing buffered on the server)
 - **Flexible database** — SQLite out of the box, PostgreSQL-ready (Neon, Supabase…)
 - **Clean API** — typed schemas, proper HTTP status codes, interactive docs at `/docs`
 
@@ -92,7 +93,7 @@ number from the dashboard.
 | DELETE | `/api/chats/{id}`           | Remove a chat from my list               |
 | GET    | `/api/chats/{id}/messages`  | Last 20 messages (`?after_id=N` → only newer) |
 | POST   | `/api/chats/{id}/messages`  | Send a message to an added chat          |
-| POST   | `/api/chats/{id}/files`     | Upload a photo/file (multipart, ≤ 50 MB) |
+| POST   | `/api/chats/{id}/files`     | Upload a photo/file (multipart, ≤ 50 MB; optional `as_photo` flag) |
 | GET    | `/api/chats/{id}/messages/{mid}/download` | Stream/download media (`?thumb=1` preview) |
 | GET    | `/healthz`                  | Liveness probe                           |
 
@@ -125,5 +126,9 @@ telegram-web-lite/
 - For production: set a strong `SECRET_KEY`, set `DEBUG=False`, serve behind
   TLS (e.g. via a reverse proxy) and consider `https_only=True` on the session
   cookie in `app/main.py`.
+- **Persistent Telegram connections** are pooled per user in-process (see
+  `app/core/telegram.py`). This is what keeps the app snappy, but it means the
+  pool lives in one process — run a single uvicorn worker (the default), or be
+  aware that each worker keeps its own pool.
 - Database schema is created automatically on startup (`create_all`). For
   evolving schemas, adopt Alembic migrations.

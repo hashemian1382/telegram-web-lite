@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app import __version__
 from app.config import settings
 from app.core.database import Base, engine
-from app.core.telegram import TelegramAPIError
+from app.core.telegram import TelegramAPIError, telegram_manager
 from app.routers import auth, chats, views
 
 logging.basicConfig(
@@ -29,11 +29,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup
     settings.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    await telegram_manager.start()  # idle-connection reaper
     if settings.SECRET_KEY == "change-me-in-production":
         logger.warning("SECRET_KEY is the built-in default — set it in .env before deploying!")
     logger.info("Telegram Web Lite v%s started (debug=%s)", __version__, settings.DEBUG)
     yield
-    # Shutdown — engine connections are returned to the pool automatically.
+    # Shutdown — close pooled Telegram connections and return engine
+    # connections to the pool automatically.
+    await telegram_manager.close()
 
 
 app = FastAPI(

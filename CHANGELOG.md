@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.5.0] — 2026-08-14 — Latency, duplicate-send fixes & photo sending
+
+### Fixed — latency (root cause)
+- **Persistent connection pool** (`app/core/telegram.py`): the app no longer
+  opens a brand-new Telegram connection and tears it down for every request.
+  Each operation previously paid for a TCP + TLS handshake plus several RPC
+  round-trips (and an extra `GetMe`), which is why a single send or fetch could
+  take seconds. Connections are now reused per user, dropping the steady-state
+  cost to a single RPC on an already-open socket. Idle connections are reaped
+  in the background and the whole pool closes cleanly on shutdown.
+- Invalid/revoked sessions now also evict their pooled connection.
+
+### Fixed — duplicate sends & duplicate bubbles
+- **Send guard**: a single `sendInFlight` flag plus disabled controls now makes
+  it impossible for repeated Enter presses / button clicks to fire the same
+  message or upload twice (this was the "message sent several times after a
+  delay" bug — the slow network window let a second Enter slip through).
+- **Optimistic rendering**: messages appear instantly as a "sending" bubble and
+  are reconciled with the server reply, so there is no perceived dead time that
+  tempts a re-press.
+- **De-duplication**: a `knownIds` set prevents the auto-refresh poll from
+  re-rendering a message that was just sent/rendered.
+- **Non-overlapping polling**: auto-refresh is now self-scheduling (the next
+  tick only starts after the previous finishes), pauses on hidden tabs, and
+  discards results if you switched chats mid-request.
+
+### Added — send photos as photos (and files)
+- The upload endpoint now accepts an `as_photo` flag and spools the upload to a
+  temp file whose name/extension lets Telethon detect the correct type. Images
+  are sent as **photos** by default (they previously always went as documents
+  because the temp file had no extension, and the original file name was lost).
+- A **"Photo / File" segmented toggle** appears in the composer for image
+  attachments, so an image can be sent either inline as a photo or as a
+  document. Non-image files are unchanged (videos/audio keep their natural
+  types). Original file names are now preserved via an explicit
+  `DocumentAttributeFilename`.
+
+### Changed
+- Frontend `app.js` refactored: clearer module-style sections, a shared
+  `appendMessage` renderer with a pending state, and explicit guards/tokens
+  against stale async results.
+
 ## [1.4.0] — 2026-08-14 — Frontend redesign
 
 Purely a presentation-layer release: **no Python, API, database, or behaviour

@@ -5,6 +5,7 @@ Telegram dialog list. Added chats are persisted in the database.
 """
 import logging
 import os
+import re
 import tempfile
 from urllib.parse import quote
 
@@ -34,6 +35,10 @@ router = APIRouter()
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 _UPLOAD_CHUNK = 1024 * 1024          # 1 MB
 
+# Extensions Telethon's `utils.is_image` recognises as a "photo" (it matches
+# only png/jpg/jpeg). Anything else is sent as a document unless normalised.
+_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
 
 # ── Helpers ─────────────────────────────────────────────────────
 def _require_linked(user: User) -> None:
@@ -44,11 +49,15 @@ def _require_linked(user: User) -> None:
         )
 
 
-def _drop_dead_session(user: User, db: DBSession, exc: TelegramAPIError) -> None:
-    """Invalid/revoked session → clear it so the UI offers re-linking."""
+async def _drop_dead_session(user: User, db: DBSession, exc: TelegramAPIError) -> None:
+    """Invalid/revoked session → clear it (and the pooled client) so the UI
+    offers re-linking."""
     if exc.status_code == 401:
         user.telegram_session = None
         db.commit()
+        await telegram_manager.drop_client(user.id)
+
+
 def _get_owned_chat(chat_id: int, user: User, db: DBSession) -> AddedChat:
     chat = db.get(AddedChat, chat_id)
     if chat is None or chat.user_id != user.id:
@@ -61,6 +70,21 @@ def _get_owned_chat(chat_id: int, user: User, db: DBSession) -> AddedChat:
 
 def _creds(user: User) -> dict:
     return {"api_id": user.custom_api_id, "api_hash": user.custom_api_hash}
+
+
+def _safe_filename(name: str | None) -> str:
+    """Sanitise a browser-supplied filename (strip path components and any
+    control / reserved characters) so it can be used on disk and as the
+    Telegram document name."""
+    name = os.path.basename(name or "").strip()
+    name = re.sub(r"[\x00-\x1f/\\:*?\"<>|]", "_", name).strip(" .")
+    return name or "file"
+
+
+def _is_image(filename: str | None, mime_type: str | None) -> bool:
+    return bool(mime_type and mime_type.startswith("image/")) or bool(
+        filename and filename.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"))
+    )
 
 
 # ── Curated chat list ───────────────────────────────────────────
@@ -84,12 +108,13 @@ async def add_chat(payload: AddChatRequest, user: CurrentUser, db: DBSession) ->
     _require_linked(user)
     try:
         peer = await telegram_manager.resolve_peer(
+            user_id=user.id,
             session_string=user.telegram_session,
             identifier=payload.identifier,
             **_creds(user),
         )
     except TelegramAPIError as exc:
-        _drop_dead_session(user, db, exc)
+        await _drop_dead_session(user, db, exc)
         raise
 
     existing = db.scalar(
@@ -129,6 +154,7 @@ async def get_messages(
     chat = _get_owned_chat(chat_id, user, db)
     try:
         messages = await telegram_manager.fetch_messages(
+            user_id=user.id,
             session_string=user.telegram_session,
             peer_type=chat.peer_type,
             peer_id=chat.peer_id,
@@ -138,7 +164,7 @@ async def get_messages(
             **_creds(user),
         )
     except TelegramAPIError as exc:
-        _drop_dead_session(user, db, exc)
+        await _drop_dead_session(user, db, exc)
         raise
     return MessageListResponse(
         chat=AddedChatOut.model_validate(chat),
@@ -154,6 +180,7 @@ async def send_message(
     chat = _get_owned_chat(chat_id, user, db)
     try:
         message = await telegram_manager.send_message(
+            user_id=user.id,
             session_string=user.telegram_session,
             peer_type=chat.peer_type,
             peer_id=chat.peer_id,
@@ -162,7 +189,7 @@ async def send_message(
             **_creds(user),
         )
     except TelegramAPIError as exc:
-        _drop_dead_session(user, db, exc)
+        await _drop_dead_session(user, db, exc)
         raise
     return SentMessageResponse(message=MessageOut(**message))
 
@@ -175,18 +202,49 @@ async def send_file(
     db: DBSession,
     file: UploadFile,
     caption: str | None = Form(default=None, max_length=1024),
+    as_photo: bool | None = Form(default=None),
 ) -> SentMessageResponse:
     """Upload a photo or file (multipart). The file is spooled to a temp file
     in 1 MB chunks so memory stays flat, then handed to Telethon for the
-    (chunked) upload straight to Telegram."""
+    (chunked) upload straight to Telegram.
+
+    ``as_photo`` controls how an image is sent:
+      * ``None`` (default) → auto: images become photos, everything else its
+        natural type (video / audio / document).
+      * ``true``  → force as a photo.
+      * ``false`` → force as a plain document (a "file").
+    """
     _require_linked(user)
     chat = _get_owned_chat(chat_id, user, db)
 
+    safe_name = _safe_filename(file.filename)
+    is_image = _is_image(safe_name, file.content_type)
+
+    # force_document only when the caller explicitly wants a file; otherwise
+    # let Telethon auto-detect (images → photos, videos → videos, …).
+    force_document = (as_photo is False)
+
+    # Choose an on-disk extension so Telethon's detection sees the right type
+    # while the *original* name is still preserved via DocumentAttributeFilename.
+    if force_document:
+        suffix = ".bin"  # guaranteed non-image → a real document
+    else:
+        ext = os.path.splitext(safe_name)[1].lower()
+        if is_image and ext not in _IMAGE_EXTENSIONS:
+            # An image whose extension Telethon doesn't recognise as a photo
+            # (e.g. .webp/.gif/.bmp, or none) — normalise so it sends as one.
+            suffix = ".jpg"
+        else:
+            suffix = ext
+
+    tmp_dir: str | None = None
     tmp_path: str | None = None
     size = 0
     try:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp_path = tmp.name
+        tmp_dir = tempfile.mkdtemp(prefix="twl-upload-")
+        stem = os.path.splitext(safe_name)[0] or "file"
+        tmp_path = os.path.join(tmp_dir, stem + suffix)
+        with open(tmp_path, "wb") as tmp:
             while chunk := await file.read(_UPLOAD_CHUNK):
                 size += len(chunk)
                 if size > MAX_UPLOAD_BYTES:
@@ -202,22 +260,32 @@ async def send_file(
             )
 
         message = await telegram_manager.send_file(
+            user_id=user.id,
             session_string=user.telegram_session,
             peer_type=chat.peer_type,
             peer_id=chat.peer_id,
             access_hash=chat.access_hash,
             file_path=tmp_path,
-            file_name=file.filename or f"file_{chat_id}",
+            file_name=safe_name,
             mime_type=file.content_type,
             caption=caption,
+            force_document=force_document,
             **_creds(user),
         )
     except TelegramAPIError as exc:
-        _drop_dead_session(user, db, exc)
+        await _drop_dead_session(user, db, exc)
         raise
     finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        if tmp_dir and os.path.isdir(tmp_dir):
+            for name in os.listdir(tmp_dir):
+                try:
+                    os.unlink(os.path.join(tmp_dir, name))
+                except OSError:
+                    pass
+            try:
+                os.rmdir(tmp_dir)
+            except OSError:
+                pass
         await file.close()
 
     return SentMessageResponse(message=MessageOut(**message))
@@ -251,6 +319,7 @@ async def download_media(
     try:
         if thumb:
             data, mime, name = await telegram_manager.download_media_thumb(
+                user_id=user.id,
                 session_string=user.telegram_session,
                 peer_type=chat.peer_type,
                 peer_id=chat.peer_id,
@@ -268,6 +337,7 @@ async def download_media(
             )
 
         stream, name, mime, size = await telegram_manager.open_media_stream(
+            user_id=user.id,
             session_string=user.telegram_session,
             peer_type=chat.peer_type,
             peer_id=chat.peer_id,
@@ -276,7 +346,7 @@ async def download_media(
             **_creds(user),
         )
     except TelegramAPIError as exc:
-        _drop_dead_session(user, db, exc)
+        await _drop_dead_session(user, db, exc)
         raise
 
     disposition = (

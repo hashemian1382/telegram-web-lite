@@ -1078,6 +1078,53 @@ svg { display: block; }
 .typing-dots i:nth-child(2) { animation-delay: 0.15s; }
 .typing-dots i:nth-child(3) { animation-delay: 0.3s; }
 
+/* Spinner (pending/sending state) */
+.spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    opacity: 0.65;
+    display: inline-block;
+    animation: spin 0.7s linear infinite;
+}
+
+/* "Send as photo / file" segmented toggle next to the attachment chip */
+.send-mode {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--r-full);
+}
+.send-mode-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-3);
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: var(--r-full);
+    cursor: pointer;
+    transition: background var(--fast), color var(--fast);
+}
+.send-mode-btn:hover { color: var(--text-2); }
+.send-mode-btn.active { background: var(--brand); color: #fff; }
+
+/* Send button busy state */
+.send-btn.is-loading svg { display: none; }
+.send-btn.is-loading::after {
+    content: "";
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-top-color: #fff;
+    animation: spin 0.7s linear infinite;
+}
+
 /* Skeleton loaders for the sidebar */
 .skeleton-item { display: flex; align-items: center; gap: 12px; padding: 9px 10px; }
 .sk {

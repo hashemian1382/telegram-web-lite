@@ -6,6 +6,15 @@
    photo/file upload & download, image lightbox, light/dark theme, and
    incremental auto-refresh (polls `?after_id=` every 2 s so new incoming
    messages appear by themselves).
+
+   Robustness notes
+   - Sends are guarded by a single `sendInFlight` flag + disabled controls,
+     so mashing Enter / the send button can never fire duplicate requests.
+   - Messages are rendered optimistically (a "sending" bubble appears
+     instantly) and reconciled against the server reply — no re-press, and
+     duplicate incoming ids are de-duplicated against a `knownIds` set.
+   - Polling is self-scheduling (never overlaps itself) and results are
+     discarded if the user switched chats mid-request.
    ═══════════════════════════════════════════════════════════════ */
 "use strict";
 
@@ -197,6 +206,13 @@ function fmtSize(bytes) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** A browser File is an image when its MIME type or extension says so. */
+function isImageFile(f) {
+    if (!f) return false;
+    if (f.type && f.type.startsWith("image/")) return true;
+    return /\.(jpe?g|png|gif|bmp|webp)$/i.test(f.name || "");
+}
+
 // ── Shared widgets ──────────────────────────────────────────────
 
 /** Password reveal buttons ([data-reveal="<input id>"]). */
@@ -364,9 +380,14 @@ function initIndexPage() {
     const composer = $("composer");
     const composerInput = $("composer-input");
     const sendBtn = $("send-btn");
+    const attachBtn = $("attach-btn");
     const fileInput = $("file-input");
     const pendingFile = $("pending-file");
     const pendingFileName = $("pending-file-name");
+    const pendingFileRemove = $("pending-file-remove");
+    const sendMode = $("send-mode");
+    const modePhoto = $("mode-photo");
+    const modeFile = $("mode-file");
     const sidebar = $("sidebar");
     const workspace = document.querySelector(".workspace");
 
@@ -377,7 +398,12 @@ function initIndexPage() {
     let chats = [];
     let activeChatId = null;
     let lastMsgId = 0;                 // high-water mark for incremental polls
+    let knownIds = new Set();          // message ids already rendered (de-dupe)
     let pendingAttachment = null;      // File selected via the clip button
+    let pendingSendAsPhoto = true;     // how an image attachment is sent
+    let sendInFlight = false;          // guards against duplicate submissions
+    let pollTimer = null;              // self-scheduling poll handle
+    let tmpIdCounter = 0;              // unique negative ids for pending bubbles
     let pendingPhone = null;
     let pendingCodeHash = null;
     let searchTerm = "";
@@ -672,7 +698,13 @@ function initIndexPage() {
         return `/api/chats/${activeChatId}/messages/${messageId}/download` + (thumb ? "?thumb=1" : "");
     }
 
-    function appendMessage(m) {
+    // Append a message bubble. `pending` marks an optimistic (not-yet-confirmed)
+    // bubble: a spinner replaces the time/ticks and `localSrc` may point at a
+    // blob: URL preview. Returns the row element, or null if de-duplicated.
+    function appendMessage(m, { pending = false, localSrc = null } = {}) {
+        if (!pending && m.id != null && knownIds.has(m.id)) return null;
+        if (!pending && m.id != null) knownIds.add(m.id);
+
         const placeholder = messagesEl.querySelector(".msg-placeholder");
         if (placeholder) placeholder.remove();
 
@@ -694,12 +726,14 @@ function initIndexPage() {
 
         let mediaHtml = "";
         if (m.media_type === "photo") {
+            const src = pending && localSrc ? localSrc : mediaUrl(m.id, true);
+            const full = pending && localSrc ? localSrc : mediaUrl(m.id);
             mediaHtml = `<img class="bubble-photo" loading="lazy" alt="Photo"
-                              src="${esc(mediaUrl(m.id, true))}"
-                              data-full="${esc(mediaUrl(m.id))}">`;
+                              src="${esc(src)}" data-full="${esc(full)}">`;
         } else if (m.media_type === "document") {
+            const href = pending && localSrc ? localSrc : mediaUrl(m.id);
             mediaHtml = `
-                <a class="doc-card" href="${esc(mediaUrl(m.id))}" title="Download ${esc(m.media_name || "file")}">
+                <a class="doc-card" href="${esc(href)}" title="Download ${esc(m.media_name || "file")}">
                     <span class="doc-icon">${icon("doc")}</span>
                     <span class="doc-info">
                         <span class="doc-name"></span>
@@ -709,14 +743,15 @@ function initIndexPage() {
                 </a>`;
         }
 
+        const metaInner = pending
+            ? `<span class="spinner" aria-hidden="true"></span><span class="sr-only">Sending…</span>`
+            : `<span>${esc(fmtTime(m.date))}</span>${m.out ? icon("check-double") : ""}`;
+
         wrap.innerHTML = `
             <div class="bubble">
                 ${mediaHtml}
                 ${m.text ? `<span class="bubble-text"></span>` : ""}
-                <span class="bubble-meta">
-                    <span>${esc(fmtTime(m.date))}</span>
-                    ${m.out ? icon("check-double") : ""}
-                </span>
+                <span class="bubble-meta">${metaInner}</span>
             </div>`;
 
         const textEl = wrap.querySelector(".bubble-text");
@@ -731,7 +766,8 @@ function initIndexPage() {
         }
 
         messagesEl.appendChild(wrap);
-        lastMsgId = Math.max(lastMsgId, m.id);   // maintain the poll high-water mark
+        if (!pending) lastMsgId = Math.max(lastMsgId, m.id);
+        return wrap;
     }
 
     function scrollToBottom(smooth = false) {
@@ -741,6 +777,7 @@ function initIndexPage() {
     function resetMessageStream() {
         messagesEl.innerHTML = "";
         lastMsgId = 0;
+        knownIds.clear();
         lastDayKey = null;
         lastRowSide = null;
     }
@@ -755,10 +792,12 @@ function initIndexPage() {
 
     async function openMessages() {
         if (!activeChatId) return;
+        const chatId = activeChatId;
         const btn = $("refresh-msgs");
         btn.disabled = true;
         try {
-            const data = await api(`/api/chats/${activeChatId}/messages`);
+            const data = await api(`/api/chats/${chatId}/messages`);
+            if (activeChatId !== chatId) return;   // switched away mid-request
             resetMessageStream();
             if (data.messages.length === 0) {
                 placeholder("No messages yet — say hi! 👋");
@@ -767,17 +806,20 @@ function initIndexPage() {
             }
             scrollToBottom();
         } catch (err) {
-            toast(err.message, "error");
+            if (activeChatId === chatId) toast(err.message, "error");
         } finally {
             btn.disabled = false;
         }
     }
 
-    // Incremental refresh — only messages newer than lastMsgId.
+    // ── Incremental auto-refresh (self-scheduling — never overlaps) ──
     async function pollTick() {
-        if (!activeChatId || document.hidden) return;
+        if (document.hidden) { schedulePoll(); return; }
+        const chatId = activeChatId;
+        if (!chatId) { schedulePoll(); return; }
         try {
-            const data = await api(`/api/chats/${activeChatId}/messages?after_id=${lastMsgId}`);
+            const data = await api(`/api/chats/${chatId}/messages?after_id=${lastMsgId}`);
+            if (activeChatId !== chatId) return;   // switched away mid-request
             if (data.messages.length === 0) return;
             const nearBottom =
                 messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 140;
@@ -790,9 +832,15 @@ function initIndexPage() {
                 return;
             }
             console.warn("poll failed:", err.message);  // transient → next tick retries
+        } finally {
+            schedulePoll();
         }
     }
-    setInterval(pollTick, POLL_MS);    // runs globally; no-ops when no chat is open
+
+    function schedulePoll() {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(pollTick, POLL_MS);
+    }
 
     async function selectChat(id) {
         const chat = chats.find((c) => c.id === id);
@@ -812,7 +860,7 @@ function initIndexPage() {
         showPane("chat");
         openSidebar(false);
         await openMessages();
-        if (!MOBILE()) composerInput.focus({ preventScroll: true });
+        if (!MOBILE() && activeChatId === id) composerInput.focus({ preventScroll: true });
     }
 
     $("refresh-msgs").addEventListener("click", openMessages);
@@ -823,9 +871,15 @@ function initIndexPage() {
         composerInput.style.height = `${Math.min(composerInput.scrollHeight, 148)}px`;
         syncSendState();
     }
+
     function syncSendState() {
-        sendBtn.disabled = !composerInput.value.trim() && !pendingAttachment;
+        const empty = !composerInput.value.trim() && !pendingAttachment;
+        sendBtn.disabled = empty || sendInFlight;
+        attachBtn.disabled = sendInFlight;
+        pendingFileRemove.disabled = sendInFlight;
+        sendBtn.classList.toggle("is-loading", sendInFlight);
     }
+
     composerInput.addEventListener("input", autoGrow);
     composerInput.addEventListener("keydown", (e) => {
         // Enter sends, Shift+Enter makes a new line.
@@ -836,10 +890,22 @@ function initIndexPage() {
     });
 
     // ── Attachments ─────────────────────────────────────────────
+    function setSendMode(photo) {
+        pendingSendAsPhoto = photo;
+        if (!sendMode) return;
+        sendMode.classList.remove("hidden");
+        modePhoto.classList.toggle("active", photo);
+        modeFile.classList.toggle("active", !photo);
+        modePhoto.setAttribute("aria-pressed", String(photo));
+        modeFile.setAttribute("aria-pressed", String(!photo));
+    }
+
     function clearAttachment() {
         pendingAttachment = null;
+        pendingSendAsPhoto = true;
         fileInput.value = "";
         pendingFile.classList.add("hidden");
+        if (sendMode) sendMode.classList.add("hidden");
         syncSendState();
     }
 
@@ -855,10 +921,16 @@ function initIndexPage() {
         pendingAttachment = f;
         pendingFileName.textContent = `${f.name} · ${fmtSize(f.size)}`;
         pendingFile.classList.remove("hidden");
+        // Only images get the "photo vs file" choice.
+        if (isImageFile(f)) setSendMode(true);
+        else if (sendMode) sendMode.classList.add("hidden");
         composerInput.focus({ preventScroll: true });
         syncSendState();
     });
-    $("pending-file-remove").addEventListener("click", clearAttachment);
+    pendingFileRemove.addEventListener("click", clearAttachment);
+
+    if (modePhoto) modePhoto.addEventListener("click", () => setSendMode(true));
+    if (modeFile) modeFile.addEventListener("click", () => setSendMode(false));
 
     // Drag & drop onto the chat pane
     const pane = document.querySelector(".pane");
@@ -888,47 +960,92 @@ function initIndexPage() {
     });
 
     // ── Sending: text AND photos/files ──────────────────────────
-    composer.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        if (!activeChatId) return;
+    async function doSend() {
+        if (sendInFlight || !activeChatId) return;
         const text = composerInput.value.trim();
+        if (!text && !pendingAttachment) return;
 
-        if (pendingAttachment) {
-            const fd = new FormData();
-            fd.append("file", pendingAttachment);
-            if (text) fd.append("caption", text);
-            sendBtn.disabled = true;
-            sendBtn.classList.add("is-loading");
-            try {
-                const res = await apiUpload(`/api/chats/${activeChatId}/files`, fd);
-                composerInput.value = "";
-                autoGrow();
-                clearAttachment();
-                appendMessage(res.message);
-                scrollToBottom(true);
-            } catch (err) {
-                toast(err.message, "error");
-            } finally {
-                sendBtn.classList.remove("is-loading");
-                syncSendState();
-            }
-            return;
+        const chatIdAtStart = activeChatId;
+        const attachment = pendingAttachment;
+        const caption = text;
+        const asPhoto = pendingSendAsPhoto;
+
+        sendInFlight = true;
+        syncSendState();
+
+        // ── Optimistic bubble (instant feedback — no re-press) ──
+        let tempEl = null;
+        let localUrl = null;
+        const tempId = --tmpIdCounter;
+        const nowIso = new Date().toISOString();
+        if (attachment && isImageFile(attachment)) {
+            localUrl = URL.createObjectURL(attachment);
+            tempEl = appendMessage(
+                { id: tempId, text: caption, out: true, date: nowIso, media_type: "photo" },
+                { pending: true, localSrc: localUrl });
+        } else if (attachment) {
+            tempEl = appendMessage(
+                { id: tempId, text: caption, out: true, date: nowIso,
+                  media_type: "document", media_name: attachment.name, media_size: attachment.size },
+                { pending: true });
+        } else {
+            tempEl = appendMessage(
+                { id: tempId, text: caption, out: true, date: nowIso },
+                { pending: true });
         }
+        scrollToBottom(true);
 
-        if (!text) return;
+        // Clear the composer so it reads as "sent".
         composerInput.value = "";
         autoGrow();
+
+        const removeTemp = () => {
+            if (tempEl && tempEl.isConnected) tempEl.remove();
+            if (localUrl) { URL.revokeObjectURL(localUrl); localUrl = null; }
+        };
+
         try {
-            const res = await api(`/api/chats/${activeChatId}/messages`, {
-                method: "POST", body: { text },
-            });
-            appendMessage(res.message);
-            scrollToBottom(true);
+            const res = attachment
+                ? await apiUpload(`/api/chats/${chatIdAtStart}/files`, buildUploadForm(attachment, caption, asPhoto))
+                : await api(`/api/chats/${chatIdAtStart}/messages`, {
+                    method: "POST", body: { text: caption },
+                });
+
+            removeTemp();
+            // Confirm with the server's version of the message.
+            if (activeChatId === chatIdAtStart) {
+                appendMessage(res.message);
+                scrollToBottom(true);
+            }
+            if (pendingAttachment === attachment) clearAttachment();
         } catch (err) {
-            composerInput.value = text;         // restore on failure
-            autoGrow();
+            removeTemp();
+            // Restore what the user typed/attached — but never clobber text the
+            // user entered *while* the send was in flight.
+            if (activeChatId === chatIdAtStart) {
+                if (!composerInput.value.trim()) composerInput.value = caption;
+                autoGrow();
+            }
             toast(err.message, "error");
+        } finally {
+            sendInFlight = false;
+            syncSendState();
+            if (!MOBILE() && activeChatId === chatIdAtStart) composerInput.focus({ preventScroll: true });
         }
+    }
+
+    function buildUploadForm(file, caption, asPhoto) {
+        const fd = new FormData();
+        fd.append("file", file);
+        if (caption) fd.append("caption", caption);
+        // Only image attachments carry an explicit mode; other files use "auto".
+        if (isImageFile(file)) fd.append("as_photo", asPhoto ? "true" : "false");
+        return fd;
+    }
+
+    composer.addEventListener("submit", (e) => {
+        e.preventDefault();
+        doSend();
     });
 
     // ── Session ─────────────────────────────────────────────────
@@ -941,6 +1058,7 @@ function initIndexPage() {
     syncSendState();
     renderSkeletons();
     loadIdentity().then((ok) => ok && loadChats());
+    schedulePoll();   // start the self-scheduling auto-refresh loop
 }
 
 // ── Bootstrap ───────────────────────────────────────────────────
