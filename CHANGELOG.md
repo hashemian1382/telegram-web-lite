@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.3.0] — 2026-08-14 — Photos, files & live refresh
+
+### Added
+- **Photo & file sending**: `POST /api/chats/{id}/files` (multipart, optional
+  caption). Uploads spool to disk in 1 MB chunks (flat memory), capped at
+  50 MB (413 above); Telethon streams the file to Telegram in chunks. Images
+  go as Telegram photos, everything else as documents.
+- **Media in messages**: bubbles carry media metadata (`media_type`,
+  `media_name`, `media_size`, `mime_type`); captions shown as message text.
+- **Media download**: `GET /api/chats/{id}/messages/{mid}/download` streams
+  the file straight from Telegram to the browser — the client connection stays
+  open for the generator's lifetime, so even large files never sit in server
+  memory. Images/videos/audio/PDF render inline, other types download as
+  attachments, unicode filenames via RFC 5987. `?thumb=1` returns a small
+  photo preview for chat bubbles.
+- **Live auto-refresh**: messages poll `GET .../messages?after_id=N`
+  (Telethon `min_id`) every 2 seconds — only *new* messages transfer, they
+  append in place, and the view only auto-scrolls when you're already at the
+  bottom. Polling pauses on hidden tabs and stops cleanly if the Telegram
+  session dies.
+- Composer 📎 attach button with a pending-file chip (name + size + remove).
+
 ## [1.2.0] — 2026-08-14 — Curated chat workspace
 
 ### Changed

@@ -16,7 +16,11 @@ JS on the frontend — no build step required.
 - **Curated chat workspace** — you only see what YOU add: drop any @username or
   numeric Telegram ID into the app and it stays in your personal list, persisted
   in the database (never the whole dialogs dump)
-- **Messaging** — read the last 20 messages of an added chat and send new ones
+- **Messaging** — read the last 20 messages of an added chat and send new ones;
+  incoming messages appear automatically (incremental refresh every 2 s)
+- **Photos & files** — send photos/files with captions; photo previews right in
+  the bubbles, full files stream to your browser straight from Telegram
+  (nothing buffered on the server)
 - **Flexible database** — SQLite out of the box, PostgreSQL-ready (Neon, Supabase…)
 - **Clean API** — typed schemas, proper HTTP status codes, interactive docs at `/docs`
 
@@ -63,8 +67,10 @@ number from the dashboard.
 | GET    | `/api/chats/`               | List MY added chats (from the database)  |
 | POST   | `/api/chats/`               | Add a chat by @username / numeric ID     |
 | DELETE | `/api/chats/{id}`           | Remove a chat from my list               |
-| GET    | `/api/chats/{id}/messages`  | Last 20 messages of an added chat        |
+| GET    | `/api/chats/{id}/messages`  | Last 20 messages (`?after_id=N` → only newer) |
 | POST   | `/api/chats/{id}/messages`  | Send a message to an added chat          |
+| POST   | `/api/chats/{id}/files`     | Upload a photo/file (multipart, ≤ 50 MB) |
+| GET    | `/api/chats/{id}/messages/{mid}/download` | Stream/download media (`?thumb=1` preview) |
 | GET    | `/healthz`                  | Liveness probe                           |
 
 ## Project structure

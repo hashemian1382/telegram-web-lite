@@ -91,6 +91,77 @@ html, body {
     margin-top: 0.15rem;
 }
 
+/* ── Photos in bubbles ──────────────────────────────────────── */
+.bubble-photo {
+    max-width: 300px;
+    max-height: 260px;
+    width: auto;
+    border-radius: 0.7rem;
+    display: block;
+    object-fit: cover;
+    background: #e2e8f0;
+    cursor: zoom-in;
+}
+
+/* ── Document (file) cards ──────────────────────────────────── */
+.doc-card {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 13rem;
+    color: inherit;
+    text-decoration: none;
+    padding: 0.15rem 0;
+}
+.doc-icon { font-size: 1.6rem; }
+.doc-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.doc-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+}
+.doc-size { font-size: 0.7rem; color: #7c8a97; }
+.doc-dl {
+    color: #0ea5e9;
+    font-size: 1.1rem;
+    transition: transform 0.12s ease;
+}
+.doc-card:hover .doc-dl { transform: translateY(2px); }
+
+/* ── Pending attachment chip (above composer) ───────────────── */
+.file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 9999px;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.8rem;
+    max-width: 100%;
+}
+.file-chip-icon { flex-shrink: 0; }
+.file-chip-name {
+    color: #0c4a6e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.file-chip-x {
+    color: #94a3b8;
+    font-size: 0.75rem;
+    padding: 0 0.1rem;
+}
+.file-chip-x:hover { color: #ef4444; }
+
 /* Busy state for buttons while a request is in flight */
 button[disabled] {
     opacity: 0.6;

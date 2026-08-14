@@ -265,15 +265,30 @@ class TelegramManager:
 
     @staticmethod
     def _message_to_dict(msg) -> dict[str, Any]:
-        text = msg.message
-        if not text:
-            text = "📎 Media / unsupported content" if msg.media else ""
+        # msg.message doubles as the caption for media messages.
+        text = msg.message or ""
+        media_type = media_name = mime_type = None
+        media_size = None
+        if msg.media:
+            media_type = (
+                "photo" if isinstance(msg.media, types.MessageMediaPhoto) else "document"
+            )
+            f = msg.file  # Telethon FileProperties (name/size/mime) when available
+            media_name = (f.name if f and f.name else None) or (
+                "photo.jpg" if media_type == "photo" else f"file_{msg.id}"
+            )
+            media_size = getattr(f, "size", None) if f else None
+            mime_type = getattr(f, "mime_type", None) if f else None
         return {
             "id": int(msg.id),
             "text": text,
             "out": bool(msg.out),
             "sender_id": getattr(msg, "sender_id", None),
             "date": msg.date.isoformat() if msg.date else None,
+            "media_type": media_type,
+            "media_name": media_name,
+            "media_size": media_size,
+            "mime_type": mime_type,
         }
 
     async def fetch_messages(
@@ -285,15 +300,27 @@ class TelegramManager:
         api_id: int | None = None,
         api_hash: str | None = None,
         limit: int = 20,
+        after_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch the last ``limit`` messages (oldest → newest) with a peer."""
+        """Fetch messages with a peer (oldest → newest).
+
+        Default: the last ``limit`` messages. With ``after_id`` only messages
+        newer than that id are returned — used for incremental auto-refresh.
+        """
         peer = self._input_peer(peer_type, peer_id, access_hash)
         async with _connected_client(session_string, api_id, api_hash) as client:
             try:
-                messages = await client.get_messages(peer, limit=limit)
+                if after_id:
+                    messages = await client.get_messages(peer, limit=100, min_id=after_id)
+                else:
+                    messages = await client.get_messages(peer, limit=limit)
             except errors.RPCError as exc:
                 raise _map_rpc(exc, "fetch_messages") from exc
-        return [self._message_to_dict(m) for m in reversed(messages)]
+        if messages is None:
+            return []
+        if not isinstance(messages, list):
+            messages = [messages]
+        return [self._message_to_dict(m) for m in reversed(messages) if m is not None]
 
     async def send_message(
         self,
@@ -313,6 +340,131 @@ class TelegramManager:
             except errors.RPCError as exc:
                 raise _map_rpc(exc, "send_message") from exc
         return self._message_to_dict(msg)
+
+    async def send_file(
+        self,
+        session_string: str,
+        peer_type: str,
+        peer_id: int,
+        access_hash: int | None,
+        file_path: str,
+        file_name: str,
+        mime_type: str | None,
+        caption: str | None = None,
+        api_id: int | None = None,
+        api_hash: str | None = None,
+    ) -> dict[str, Any]:
+        """Upload a photo or file (with optional caption); returns the message.
+
+        Images travel as Telegram photos; everything else as documents —
+        Telethon decides from the mime type unless told otherwise.
+        """
+        peer = self._input_peer(peer_type, peer_id, access_hash)
+        async with _connected_client(session_string, api_id, api_hash) as client:
+            try:
+                msg = await client.send_file(
+                    peer,
+                    file_path,
+                    file_name=file_name,
+                    mime_type=mime_type,
+                    caption=caption or None,
+                )
+            except errors.RPCError as exc:
+                raise _map_rpc(exc, "send_file") from exc
+            except OSError as exc:
+                raise TelegramAPIError("Failed to read the uploaded file.", status_code=500) from exc
+        if msg is None:
+            raise TelegramAPIError("Upload did not complete — try again.", status_code=502)
+        return self._message_to_dict(msg)
+
+    async def _get_message_with_media(self, client, peer, message_id: int):
+        try:
+            msg = await client.get_messages(peer, ids=message_id)
+        except errors.RPCError as exc:
+            raise _map_rpc(exc, "_get_message_with_media") from exc
+        if msg is None or not msg.media:
+            raise TelegramAPIError("No file attached to this message.", status_code=404)
+        return msg
+
+    async def download_media_thumb(
+        self,
+        session_string: str,
+        peer_type: str,
+        peer_id: int,
+        access_hash: int | None,
+        message_id: int,
+        api_id: int | None = None,
+        api_hash: str | None = None,
+    ) -> tuple[bytes, str, str]:
+        """Download a small photo preview (bytes, mime, filename) — fast,
+        meant for inline chat bubbles rather than full-quality downloads."""
+        peer = self._input_peer(peer_type, peer_id, access_hash)
+        async with _connected_client(session_string, api_id, api_hash) as client:
+            msg = await self._get_message_with_media(client, peer, message_id)
+            if not isinstance(msg.media, types.MessageMediaPhoto):
+                raise TelegramAPIError(
+                    "Preview is only available for photos — download the file instead.",
+                    status_code=404,
+                )
+            try:
+                data = await client.download_media(msg, file=bytes, thumb=1)
+            except Exception:  # some photos expose few sizes → full image
+                data = await client.download_media(msg, file=bytes)
+        if data is None:
+            raise TelegramAPIError("Could not download the preview.", status_code=502)
+        return data, "image/jpeg", f"photo_{message_id}.jpg"
+
+    async def open_media_stream(
+        self,
+        session_string: str,
+        peer_type: str,
+        peer_id: int,
+        access_hash: int | None,
+        message_id: int,
+        api_id: int | None = None,
+        api_hash: str | None = None,
+    ) -> tuple[AsyncIterator[bytes], str, str, int | None]:
+        """Open a streaming download: chunk-generator, filename, mime, size.
+
+        The Telegram client stays connected for the lifetime of the returned
+        generator and is disconnected when it finishes (or breaks) — so large
+        files stream to the browser without ever being buffered on the server.
+        """
+        # Manually drive the shared context manager so errors map identically.
+        ctx = _connected_client(session_string, api_id, api_hash)
+        client = await ctx.__aenter__()
+        peer = self._input_peer(peer_type, peer_id, access_hash)
+        try:
+            msg = await self._get_message_with_media(client, peer, message_id)
+        except BaseException:
+            await ctx.__aexit__(None, None, None)
+            raise
+
+        f = msg.file
+        name = (f.name if f and f.name else None) or (
+            f"photo_{message_id}.jpg"
+            if isinstance(msg.media, types.MessageMediaPhoto)
+            else f"file_{message_id}"
+        )
+        mime = getattr(f, "mime_type", None) if f else None
+        mime = mime or (
+            "image/jpeg"
+            if isinstance(msg.media, types.MessageMediaPhoto)
+            else "application/octet-stream"
+        )
+        size = getattr(f, "size", None) if f else None
+
+        async def chunk_stream() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in client.iter_download(msg.media):
+                    yield chunk
+            except errors.RPCError as exc:  # e.g. flood mid-download
+                logger.warning("media stream interrupted: %s", exc)
+                raise
+            finally:
+                await ctx.__aexit__(None, None, None)  # disconnects
+
+        return chunk_stream(), name, mime, size
 
 
 # Process-wide singleton used by the routers.

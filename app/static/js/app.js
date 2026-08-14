@@ -1,5 +1,9 @@
 /* Telegram Web Lite — client-side logic.
  * Vanilla JS, no build step. Each page self-initialises via [data-page].
+ *
+ * Dashboard features: curated chat list, text messaging, photo/file upload &
+ * download, and incremental auto-refresh (polls `?after_id=` every 2 s so new
+ * incoming messages appear by themselves).
  */
 "use strict";
 
@@ -14,16 +18,26 @@ async function api(path, { method = "GET", body = null } = {}) {
     const res = await fetch(path, opts);
     if (res.status === 204) return null;
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        const detail = data.detail;
-        const msg = Array.isArray(detail)
-            ? detail.map((e) => e.msg).join("; ")
-            : detail || `Request failed (${res.status})`;
-        const err = new Error(msg);
-        err.status = res.status;
-        throw err;
-    }
+    if (!res.ok) throw apiError(res, data);
     return data;
+}
+
+// Multipart upload (browser sets the boundary — never set Content-Type here)
+async function apiUpload(path, formData) {
+    const res = await fetch(path, { method: "POST", body: formData });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw apiError(res, data);
+    return data;
+}
+
+function apiError(res, data) {
+    const detail = data.detail;
+    const msg = Array.isArray(detail)
+        ? detail.map((e) => e.msg).join("; ")
+        : detail || `Request failed (${res.status})`;
+    const err = new Error(msg);
+    err.status = res.status;
+    return err;
 }
 
 function showMessage(text, type = "error") {
@@ -40,7 +54,7 @@ function clearMessage() {
 }
 
 function setBusy(form, busy) {
-    form.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = busy));
+    form.querySelectorAll("button").forEach((b) => (b.disabled = busy));
 }
 
 function esc(s) {
@@ -66,6 +80,13 @@ function fmtDate(iso) {
     return d.toLocaleString(undefined, {
         month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
+}
+
+function fmtSize(bytes) {
+    if (!bytes && bytes !== 0) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ── Login page ──────────────────────────────────────────────────
@@ -137,10 +158,16 @@ function initIndexPage() {
     const messagesEl = document.getElementById("messages");
     const composer = document.getElementById("composer");
     const composerInput = document.getElementById("composer-input");
+    const fileInput = document.getElementById("file-input");
+    const pendingFile = document.getElementById("pending-file");
+    const pendingFileName = document.getElementById("pending-file-name");
 
+    const POLL_MS = 2000;              // auto-refresh cadence requested: 2 s
     let me = null;
-    let chats = [];            // curated list (from DB)
+    let chats = [];
     let activeChatId = null;
+    let lastMsgId = 0;                 // high-water mark for incremental polls
+    let pendingAttachment = null;      // File selected via 📎
     let pendingPhone = null;
     let pendingCodeHash = null;
 
@@ -155,7 +182,7 @@ function initIndexPage() {
         chatView.classList.toggle("flex", name === "chat");
     }
 
-    // ── Identity & linking ─────────────────────────────────────
+    // ── Identity & Telegram linking ────────────────────────────
     async function loadIdentity() {
         try {
             me = await api("/api/auth/me");
@@ -301,36 +328,92 @@ function initIndexPage() {
         }
     });
 
-    // ── Messages ───────────────────────────────────────────────
-    function appendMessage(m) {
-        const wrap = document.createElement("div");
-        wrap.className = `msg-row ${m.out ? "mine" : "theirs"}`;
-        const when = fmtDate(m.date);
-        wrap.innerHTML = `
-            <div class="bubble">
-                <span class="bubble-text"></span>
-                <span class="bubble-time">${esc(when)}</span>
-            </div>`;
-        wrap.querySelector(".bubble-text").textContent = m.text || "";
-        messagesEl.appendChild(wrap);
+    // ── Message rendering ──────────────────────────────────────
+    function mediaUrl(messageId, thumb = false) {
+        return `/api/chats/${activeChatId}/messages/${messageId}/download` + (thumb ? "?thumb=1" : "");
     }
 
-    async function openMessages(scroll = true) {
+    function appendMessage(m) {
+        const placeholder = messagesEl.querySelector(".msg-placeholder");
+        if (placeholder) placeholder.remove();
+
+        const wrap = document.createElement("div");
+        wrap.className = `msg-row ${m.out ? "mine" : "theirs"}`;
+
+        let mediaHtml = "";
+        if (m.media_type === "photo") {
+            mediaHtml = `
+                <a href="${esc(mediaUrl(m.id))}" target="_blank" rel="noopener" title="Open full photo">
+                    <img class="bubble-photo" loading="lazy" src="${esc(mediaUrl(m.id, true))}" alt="photo">
+                </a>`;
+        } else if (m.media_type === "document") {
+            mediaHtml = `
+                <a class="doc-card" href="${esc(mediaUrl(m.id))}" title="Download ${esc(m.media_name || "file")}">
+                    <span class="doc-icon">📄</span>
+                    <span class="doc-info">
+                        <span class="doc-name"></span>
+                        <span class="doc-size">${esc(fmtSize(m.media_size))}</span>
+                    </span>
+                    <span class="doc-dl">⬇</span>
+                </a>`;
+        }
+
+        wrap.innerHTML = `
+            <div class="bubble">
+                ${mediaHtml}
+                ${m.text ? `<span class="bubble-text"></span>` : ""}
+                <span class="bubble-time">${esc(fmtDate(m.date))}</span>
+            </div>`;
+
+        const textEl = wrap.querySelector(".bubble-text");
+        if (textEl) textEl.textContent = m.text;
+        const nameEl = wrap.querySelector(".doc-name");
+        if (nameEl) nameEl.textContent = m.media_name || "file";
+
+        messagesEl.appendChild(wrap);
+        lastMsgId = Math.max(lastMsgId, m.id);   // maintain the poll high-water mark
+    }
+
+    async function openMessages() {
         if (!activeChatId) return;
         try {
             const data = await api(`/api/chats/${activeChatId}/messages`);
             messagesEl.innerHTML = "";
+            lastMsgId = 0;
             if (data.messages.length === 0) {
                 messagesEl.innerHTML =
-                    `<p class="text-center text-sm text-gray-400 mt-6">No messages yet — say hi! 👋</p>`;
+                    `<p class="msg-placeholder text-center text-sm text-gray-400 mt-6">No messages yet — say hi! 👋</p>`;
             } else {
                 data.messages.forEach(appendMessage);
             }
-            if (scroll) messagesEl.scrollTop = messagesEl.scrollHeight;
+            messagesEl.scrollTop = messagesEl.scrollHeight;
         } catch (err) {
             showMessage(err.message);
         }
     }
+
+    // Incremental refresh — only messages newer than lastMsgId.
+    async function pollTick() {
+        if (!activeChatId || document.hidden) return;
+        try {
+            const data = await api(`/api/chats/${activeChatId}/messages?after_id=${lastMsgId}`);
+            if (data.messages.length === 0) return;
+            const nearBottom =
+                messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 140;
+            data.messages.forEach(appendMessage);
+            // Don't yank the view down while the user reads history.
+            if (nearBottom || data.messages.some((m) => m.out)) {
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            }
+        } catch (err) {
+            if (err.status === 401) {           // session died or was revoked
+                await loadChats();              // → link card (or /login) cleanly
+                return;
+            }
+            console.warn("poll failed:", err.message);  // transient → next tick retries
+        }
+    }
+    setInterval(pollTick, POLL_MS);    // runs globally; no-ops when no chat is open
 
     async function selectChat(id) {
         activeChatId = id;
@@ -342,27 +425,67 @@ function initIndexPage() {
         document.getElementById("chat-title").textContent = chat.title;
         document.getElementById("chat-subtitle").textContent =
             chat.username ? `@${chat.username}` : `ID: ${chat.peer_id}`;
+        clearAttachment();
         messagesEl.innerHTML =
-            `<p class="text-center text-sm text-gray-400 mt-6">Loading…</p>`;
+            `<p class="msg-placeholder text-center text-sm text-gray-400 mt-6">Loading…</p>`;
         showPane("chat");
         await openMessages();
     }
 
-    document.getElementById("refresh-msgs").addEventListener("click", () => openMessages());
+    document.getElementById("refresh-msgs").addEventListener("click", openMessages);
+
+    // ── Sending: text AND photos/files ─────────────────────────
+    function clearAttachment() {
+        pendingAttachment = null;
+        fileInput.value = "";
+        pendingFile.classList.add("hidden");
+    }
+
+    document.getElementById("attach-btn").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+        const f = fileInput.files[0];
+        if (!f) return;
+        pendingAttachment = f;
+        pendingFileName.textContent = `${f.name} · ${fmtSize(f.size)}`;
+        pendingFile.classList.remove("hidden");
+        composerInput.focus();
+    });
+    document.getElementById("pending-file-remove").addEventListener("click", clearAttachment);
 
     composer.addEventListener("submit", async (e) => {
         e.preventDefault();
+        if (!activeChatId) return;
         const text = composerInput.value.trim();
-        if (!text || !activeChatId) return;
+
+        if (pendingAttachment) {
+            const fd = new FormData();
+            fd.append("file", pendingAttachment);
+            if (text) fd.append("caption", text);
+            setBusy(composer, true);
+            try {
+                const res = await apiUpload(`/api/chats/${activeChatId}/files`, fd);
+                composerInput.value = "";
+                clearAttachment();
+                appendMessage(res.message);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            } catch (err) {
+                showMessage(err.message);
+            } finally {
+                setBusy(composer, false);
+            }
+            return;
+        }
+
+        if (!text) return;
         composerInput.value = "";
         try {
             const res = await api(`/api/chats/${activeChatId}/messages`, {
                 method: "POST", body: { text },
             });
-            appendMessage(res.message);           // instantly show own message
+            appendMessage(res.message);
             messagesEl.scrollTop = messagesEl.scrollHeight;
         } catch (err) {
-            composerInput.value = text;           // restore on failure
+            composerInput.value = text;         // restore on failure
             showMessage(err.message);
         }
     });

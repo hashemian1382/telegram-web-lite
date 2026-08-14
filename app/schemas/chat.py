@@ -33,6 +33,11 @@ class MessageOut(BaseModel):
     out: bool = False              # True → sent by the current user
     sender_id: int | None = None
     date: str | None = None        # ISO-8601
+    # Media metadata (both photos and files) — None for plain text messages
+    media_type: str | None = None  # "photo" | "document"
+    media_name: str | None = None
+    media_size: int | None = None  # bytes
+    mime_type: str | None = None
 
 
 class MessageListResponse(BaseModel):
