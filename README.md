@@ -2,8 +2,9 @@
 
 A fast, minimal, and lightweight Telegram web client built for speed and simplicity.
 
-FastAPI + Telethon on the backend, server-rendered Jinja2 + Tailwind CSS + vanilla
-JS on the frontend — no build step required.
+FastAPI + Telethon on the backend, server-rendered Jinja2 + a self-contained CSS
+design system + vanilla JS on the frontend — no build step, no CDN, no runtime
+network dependencies.
 
 ## Features
 
@@ -23,6 +24,28 @@ JS on the frontend — no build step required.
   (nothing buffered on the server)
 - **Flexible database** — SQLite out of the box, PostgreSQL-ready (Neon, Supabase…)
 - **Clean API** — typed schemas, proper HTTP status codes, interactive docs at `/docs`
+
+## Interface
+
+The frontend is a hand-rolled design system in a single stylesheet — **no
+Tailwind CDN, no build step, no external fonts or icon packs**. Everything
+(icons included, as an inline SVG sprite) is served from the app itself, so it
+works fully offline and behind strict CSPs.
+
+- **Light & dark themes** — toggle in the header, remembered in `localStorage`,
+  falls back to the OS preference and is applied before first paint (no flash)
+- **Auth screens** — animated ambient background, sliding segmented tabs,
+  floating labels, show/hide password, live password-strength meter
+- **Telegram linking** — 3-step stepper (phone → code → done), phone recap with
+  a "Change" action, dedicated confirmation-code field, collapsible custom
+  `api_id` / `api_hash`
+- **Chat** — grouped bubbles with tails, Today/Yesterday date dividers, read
+  ticks, subtle chat wallpaper, photo lightbox (Esc to close), file cards
+- **Productivity** — chat search, `Enter` to send / `Shift+Enter` for a newline,
+  auto-growing composer, drag-&-drop and paste-to-attach, toast notifications,
+  skeleton loaders
+- **Responsive** — off-canvas chat drawer on mobile, full keyboard navigation,
+  visible focus rings, and `prefers-reduced-motion` support
 
 ## Quickstart
 
@@ -89,7 +112,7 @@ telegram-web-lite/
 │   ├── schemas/            # Request/response models (Pydantic v2)
 │   ├── routers/            # views / auth / chats / shared dependencies
 │   ├── static/             # css + vanilla js
-│   └── templates/          # base / login / index (Jinja2 + Tailwind)
+│   └── templates/          # base / login / index (Jinja2 + inline SVG sprite)
 ├── sessions/               # Reserved for runtime artefacts (git-ignored)
 ├── requirements.txt
 ├── .env.example

@@ -1,129 +1,244 @@
 {% extends "base.html" %}
 {% block title %}Chats — Telegram Web Lite{% endblock %}
 {% block content %}
-<div class="flex flex-col flex-1 overflow-hidden" data-page="index">
-    <header class="bg-white shadow-sm px-4 py-3 flex items-center justify-between z-10">
-        <h1 class="text-lg font-bold text-sky-600">✈️ Telegram Web Lite</h1>
-        <div class="flex items-center gap-3">
-            <span id="current-user" class="text-sm text-gray-500"></span>
-            <button id="logout-btn" class="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition">Sign out</button>
+<div class="app" data-page="index">
+
+    <!-- ══ Top bar ══════════════════════════════════════════════ -->
+    <header class="topbar">
+        <button type="button" id="sidebar-toggle" class="icon-btn back-btn"
+                title="Show chats" aria-label="Show chat list">
+            <svg><use href="#i-menu"></use></svg>
+        </button>
+
+        <div class="topbar-brand">
+            <span class="topbar-mark"><svg><use href="#i-plane"></use></svg></span>
+            <span>Telegram Web Lite</span>
         </div>
+
+        <div class="spacer"></div>
+
+        <button type="button" id="theme-toggle" class="icon-btn theme-toggle"
+                title="Toggle theme" aria-label="Toggle colour theme">
+            <svg class="sun"><use href="#i-sun"></use></svg>
+            <svg class="moon"><use href="#i-moon"></use></svg>
+        </button>
+
+        <div class="user-chip" id="user-chip" title="Signed in account">
+            <span class="avatar" id="me-avatar">?</span>
+            <span id="current-user" class="truncate"></span>
+        </div>
+
+        <button type="button" id="logout-btn" class="icon-btn danger"
+                title="Sign out" aria-label="Sign out">
+            <svg><use href="#i-logout"></use></svg>
+        </button>
     </header>
 
-    <div id="message" class="hidden mx-4 mt-3"></div>
+    <!-- ══ Workspace ════════════════════════════════════════════ -->
+    <div class="workspace">
 
-    <main class="flex flex-1 overflow-hidden">
-        <!-- ══ Sidebar: only the chats the user added ══ -->
-        <aside class="w-80 max-w-[85vw] bg-white border-r flex flex-col">
-            <div class="p-3 border-b flex items-center justify-between">
-                <h2 class="font-semibold text-gray-700">My Chats</h2>
-                <button id="toggle-add" title="Add a chat"
-                        class="w-8 h-8 rounded-full bg-sky-500 hover:bg-sky-600 text-white text-lg leading-none transition">+</button>
+        <!-- ── Sidebar: the user's curated chats ──────────────── -->
+        <aside class="sidebar" id="sidebar" aria-label="My chats">
+            <div class="sidebar-head">
+                <h2 class="sidebar-title">My Chats</h2>
+                <span class="count-pill" id="chat-count">0</span>
+                <div class="spacer"></div>
+                <button type="button" id="toggle-add" class="fab"
+                        title="Add a chat" aria-label="Add a chat" aria-expanded="false">
+                    <svg><use href="#i-plus"></use></svg>
+                </button>
             </div>
 
-            <form id="add-chat-form" class="hidden p-3 border-b bg-sky-50/60 space-y-2">
-                <input name="identifier" type="text" placeholder="@username or numeric ID"
-                       autocomplete="off" required
-                       class="w-full p-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white">
-                <button type="submit"
-                        class="w-full bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold py-2 rounded-lg transition">
-                    Add chat
-                </button>
-                <p class="text-[11px] text-gray-500 leading-snug">
+            <div class="search-wrap">
+                <svg><use href="#i-search"></use></svg>
+                <input type="search" id="chat-search" class="search-input"
+                       placeholder="Search my chats…" autocomplete="off" aria-label="Search my chats">
+            </div>
+
+            <form id="add-chat-form" class="add-panel hidden" novalidate>
+                <div class="field">
+                    <input class="field-input" id="add-identifier" name="identifier" type="text"
+                           placeholder=" " autocomplete="off" required spellcheck="false">
+                    <label class="field-label" for="add-identifier">@username or numeric ID</label>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block btn-sm">Add chat</button>
+                <small class="field-hint" style="margin:0">
                     Usernames work for anyone. Numeric IDs only for people you've interacted with.
-                </p>
+                </small>
             </form>
 
-            <ul id="chat-list" class="flex-1 overflow-y-auto divide-y divide-gray-100"></ul>
-            <div id="chats-empty" class="hidden flex-1 flex flex-col items-center justify-center text-center p-6 text-gray-400">
-                <p class="text-4xl mb-2">➕</p>
-                <p class="text-sm font-medium text-gray-500">No chats yet</p>
-                <p class="text-xs mt-1">Add someone by @username or numeric ID using the + button.</p>
+            <ul id="chat-list" class="chat-list" role="list"></ul>
+
+            <div id="chats-empty" class="empty hidden">
+                <div class="empty-art"><svg><use href="#i-plus"></use></svg></div>
+                <p class="empty-title">No chats yet</p>
+                <p class="empty-text">Add someone by @username or numeric ID using the + button above.</p>
+            </div>
+
+            <div id="chats-nomatch" class="empty hidden">
+                <div class="empty-art"><svg><use href="#i-search"></use></svg></div>
+                <p class="empty-title">No matches</p>
+                <p class="empty-text">No chat in your list matches that search.</p>
             </div>
         </aside>
 
-        <!-- ══ Main pane ══ -->
-        <section class="flex-1 flex flex-col bg-[#eef2f5] min-w-0">
+        <!-- ── Main pane ──────────────────────────────────────── -->
+        <section class="pane">
 
             <!-- Empty state -->
-            <div id="empty-state" class="flex-1 hidden flex-col items-center justify-center text-gray-400 select-none">
-                <p class="text-6xl mb-4">💬</p>
-                <p class="text-lg font-medium text-gray-500">Your conversations</p>
-                <p class="text-sm mt-1">Pick a chat from the sidebar — or add one with the + button.</p>
+            <div id="empty-state" class="empty hidden">
+                <div class="empty-art"><svg><use href="#i-chat"></use></svg></div>
+                <p class="empty-title">Your conversations</p>
+                <p class="empty-text">Pick a chat from the sidebar — or add one with the + button.</p>
             </div>
 
-            <!-- Telegram linking card (shown when no session is stored) -->
-            <div class="flex-1 flex items-center justify-center p-6" id="link-wrap">
-                <div id="link-card" class="bg-white rounded-xl shadow-md p-6 w-full max-w-md hidden">
-                    <h2 class="text-xl font-bold mb-1">Link your Telegram account</h2>
-                    <p class="text-sm text-gray-500 mb-5">
-                        Enter your phone number in international format. A confirmation code will be sent to your Telegram app.
+            <!-- Telegram linking (shown when no Telegram session is stored) -->
+            <div class="link-wrap hidden" id="link-wrap">
+                <div id="link-card" class="link-card">
+                    <div class="link-icon"><svg><use href="#i-plane"></use></svg></div>
+                    <h2 class="link-title">Link your Telegram</h2>
+                    <p class="link-sub" id="link-sub">
+                        Enter your phone number in international format.<br>
+                        A confirmation code will be sent to your Telegram app.
                     </p>
-                    <form id="send-code-form" class="space-y-4">
-                        <input name="phone_number" type="tel" placeholder="+15551234567" required
-                               class="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400">
-                        <details class="text-sm text-gray-600">
-                            <summary class="cursor-pointer select-none">Custom API credentials (optional)</summary>
-                            <div class="mt-2 space-y-2">
-                                <input name="custom_api_id" type="number" min="1" placeholder="api_id"
-                                       class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400">
-                                <input name="custom_api_hash" type="text" placeholder="api_hash"
-                                       class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400">
+
+                    <div class="stepper" id="stepper">
+                        <div class="step active" data-step="phone">
+                            <span class="step-dot">1</span><span>Phone</span>
+                        </div>
+                        <span class="step-bar" data-bar="1"></span>
+                        <div class="step" data-step="code">
+                            <span class="step-dot">2</span><span>Code</span>
+                        </div>
+                        <span class="step-bar" data-bar="2"></span>
+                        <div class="step" data-step="done">
+                            <span class="step-dot">3</span><span>Done</span>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: phone -->
+                    <form id="send-code-form" class="link-form" novalidate>
+                        <div class="field">
+                            <input class="field-input" id="phone-number" name="phone_number" type="tel"
+                                   placeholder=" " required autocomplete="tel" inputmode="tel"
+                                   pattern="\+?[0-9]{7,15}">
+                            <label class="field-label" for="phone-number">Phone number (e.g. +15551234567)</label>
+                        </div>
+
+                        <details class="disclosure">
+                            <summary>
+                                <svg style="width:15px;height:15px"><use href="#i-key"></use></svg>
+                                Custom API credentials (optional)
+                                <svg><use href="#i-chevron-down"></use></svg>
+                            </summary>
+                            <div class="disclosure-body">
+                                <div class="field">
+                                    <input class="field-input" id="custom-api-id" name="custom_api_id"
+                                           type="number" min="1" placeholder=" " autocomplete="off">
+                                    <label class="field-label" for="custom-api-id">api_id</label>
+                                </div>
+                                <div class="field">
+                                    <input class="field-input" id="custom-api-hash" name="custom_api_hash"
+                                           type="text" placeholder=" " autocomplete="off" spellcheck="false">
+                                    <label class="field-label" for="custom-api-hash">api_hash</label>
+                                </div>
+                                <small class="field-hint" style="margin:0">
+                                    Leave empty to use the server's credentials.
+                                    Get your own at my.telegram.org/apps.
+                                </small>
                             </div>
                         </details>
-                        <button type="submit" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold p-2.5 rounded-lg transition">Send code</button>
+
+                        <button type="submit" class="btn btn-primary btn-block">Send code</button>
                     </form>
-                    <form id="verify-code-form" class="space-y-4 hidden">
-                        <input name="code" type="text" inputmode="numeric" placeholder="Confirmation code" required
-                               class="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400">
-                        <div id="twofa-group" class="hidden">
-                            <input name="password" type="password" placeholder="Two-factor password" autocomplete="off"
-                                   class="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400">
+
+                    <!-- Step 2: confirmation code (+ optional 2FA) -->
+                    <form id="verify-code-form" class="link-form hidden" novalidate>
+                        <div class="phone-recap">
+                            <svg style="width:15px;height:15px;color:var(--text-3)"><use href="#i-phone"></use></svg>
+                            <span>Code sent to <strong id="recap-phone"></strong></span>
+                            <button type="button" id="change-phone">Change</button>
                         </div>
-                        <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold p-2.5 rounded-lg transition">Verify &amp; link</button>
+
+                        <div class="field">
+                            <input class="field-input code-input" id="tg-code" name="code" type="text"
+                                   placeholder=" " required inputmode="numeric" autocomplete="one-time-code"
+                                   pattern="[0-9]{5,6}" maxlength="6">
+                            <label class="field-label" for="tg-code" style="letter-spacing:normal">Confirmation code</label>
+                        </div>
+
+                        <div class="field hidden" id="twofa-group">
+                            <input class="field-input has-action" id="tg-password" name="password"
+                                   type="password" placeholder=" " autocomplete="off">
+                            <label class="field-label" for="tg-password">Two-factor password</label>
+                            <button type="button" class="field-action" data-reveal="tg-password"
+                                    title="Show password" aria-label="Show password">
+                                <svg class="eye-on"><use href="#i-eye"></use></svg>
+                                <svg class="eye-off"><use href="#i-eye-off"></use></svg>
+                            </button>
+                            <small class="field-hint">
+                                <svg style="width:12px;height:12px;display:inline-block;vertical-align:-2px"><use href="#i-shield"></use></svg>
+                                Your cloud password is sent directly to Telegram and never stored.
+                            </small>
+                        </div>
+
+                        <button type="submit" class="btn btn-success btn-block">Verify &amp; link</button>
                     </form>
                 </div>
             </div>
 
             <!-- Chat view -->
-            <div id="chat-view" class="hidden flex-1 flex-col min-h-0">
-                <div class="bg-white border-b px-4 py-2.5 flex items-center gap-3">
-                    <div id="chat-avatar" class="avatar">?</div>
-                    <div class="flex-1 min-w-0">
-                        <p id="chat-title" class="font-semibold text-gray-800 truncate"></p>
-                        <p id="chat-subtitle" class="text-xs text-gray-400 truncate"></p>
+            <div id="chat-view" class="chat-view hidden">
+                <div class="chat-header">
+                    <button type="button" id="chat-back" class="icon-btn back-btn"
+                            title="Back to chats" aria-label="Back to chat list">
+                        <svg><use href="#i-back"></use></svg>
+                    </button>
+                    <div id="chat-avatar" class="avatar avatar-sm">?</div>
+                    <div class="chat-header-body">
+                        <p id="chat-title" class="chat-header-title truncate"></p>
+                        <p id="chat-subtitle" class="chat-header-sub truncate"></p>
                     </div>
-                    <button id="refresh-msgs" title="Refresh messages"
-                            class="text-gray-400 hover:text-sky-500 transition px-2 py-1 text-lg">⟳</button>
-                    <button id="delete-chat" title="Remove from my chats"
-                            class="text-gray-400 hover:text-red-500 transition px-2 py-1 text-lg">🗑</button>
+                    <button type="button" id="refresh-msgs" class="icon-btn"
+                            title="Refresh messages" aria-label="Refresh messages">
+                        <svg><use href="#i-refresh"></use></svg>
+                    </button>
+                    <button type="button" id="delete-chat" class="icon-btn danger"
+                            title="Remove from my chats" aria-label="Remove chat from my list">
+                        <svg><use href="#i-trash"></use></svg>
+                    </button>
                 </div>
 
-                <div id="messages" class="flex-1 overflow-y-auto px-4 py-4 space-y-2"></div>
+                <div id="messages" class="messages" role="log" aria-live="polite"></div>
 
-                <div class="bg-white border-t">
-                    <div id="pending-file" class="hidden px-3 pt-2">
+                <div class="composer-wrap">
+                    <div id="pending-file" class="attach-chip-row hidden">
                         <span class="file-chip">
-                            <span class="file-chip-icon">📎</span>
+                            <span class="file-chip-icon"><svg><use href="#i-clip"></use></svg></span>
                             <span id="pending-file-name" class="file-chip-name"></span>
-                            <button type="button" id="pending-file-remove" class="file-chip-x" title="Remove">✕</button>
+                            <button type="button" id="pending-file-remove" class="file-chip-x"
+                                    title="Remove attachment" aria-label="Remove attachment">
+                                <svg><use href="#i-close"></use></svg>
+                            </button>
                         </span>
                     </div>
-                    <form id="composer" class="p-3 flex items-center gap-2">
+
+                    <form id="composer" class="composer">
                         <input type="file" id="file-input" hidden>
-                        <button type="button" id="attach-btn" title="Send a photo or file"
-                                class="w-11 h-11 shrink-0 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center transition text-xl">📎</button>
-                        <input id="composer-input" type="text" placeholder="Write a message…"
-                               autocomplete="off" maxlength="4096"
-                               class="flex-1 p-2.5 border border-gray-300 rounded-full px-4 focus:outline-none focus:ring-2 focus:ring-sky-400 bg-gray-50">
-                        <button type="submit" title="Send"
-                                class="w-11 h-11 shrink-0 rounded-full bg-sky-500 hover:bg-sky-600 text-white flex items-center justify-center transition">
-                            <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 -translate-x-px"><path d="M2.7 2.3a1 1 0 0 1 1.1-.2l18 9a1 1 0 0 1 0 1.8l-18 9A1 1 0 0 1 2.4 21l1.8-7.5L17 12 4.2 10.5 2.4 3a1 1 0 0 1 .3-.7z"/></svg>
+                        <button type="button" id="attach-btn" class="icon-btn"
+                                title="Send a photo or file" aria-label="Attach a photo or file">
+                            <svg><use href="#i-clip"></use></svg>
+                        </button>
+                        <textarea id="composer-input" class="composer-input" rows="1"
+                                  placeholder="Write a message…" autocomplete="off"
+                                  maxlength="4096" aria-label="Message"></textarea>
+                        <button type="submit" id="send-btn" class="send-btn" title="Send" aria-label="Send message">
+                            <svg><use href="#i-send"></use></svg>
                         </button>
                     </form>
                 </div>
             </div>
         </section>
-    </main>
+    </div>
 </div>
 {% endblock %}

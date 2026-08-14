@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.4.0] — 2026-08-14 — Frontend redesign
+
+Purely a presentation-layer release: **no Python, API, database, or behaviour
+changes.** Every endpoint, payload, and flow is identical to 1.3.0 — only
+`templates/`, `static/css/`, and `static/js/` were touched.
+
+### Added
+- **Design system** (`static/css/style.css`) — CSS custom properties for colour,
+  radii, shadows, motion and layout; light + dark palettes.
+- **Dark mode** — header toggle, persisted in `localStorage`, defaults to the OS
+  preference, applied pre-paint via an inline script (no flash of wrong theme).
+- **Inline SVG icon sprite** in `base.html` — replaces all emoji-as-icons.
+- **Auth screens** — animated ambient background, sliding segmented tabs,
+  floating labels, show/hide password, live password-strength meter, and
+  auto-fill of the username after registering.
+- **Telegram linking** — 3-step stepper (phone → code → done), phone recap with
+  a "Change" action, spaced confirmation-code field, styled disclosure for
+  custom `api_id` / `api_hash`.
+- **Chat view** — grouped consecutive bubbles with tails, Today/Yesterday date
+  dividers, read ticks, chat wallpaper pattern, and a photo lightbox (Esc/click
+  to close).
+- **Productivity** — chat search box, `Enter` to send / `Shift+Enter` for a
+  newline, auto-growing composer textarea, drag-&-drop and paste-to-attach,
+  client-side 50 MB pre-check, toast notifications, and skeleton loaders.
+- **Responsive** — off-canvas sidebar drawer with backdrop on mobile.
+- **Accessibility** — semantic roles/ARIA on tabs, live regions for messages and
+  toasts, keyboard-navigable chat list, visible focus rings, and full
+  `prefers-reduced-motion` support.
+
+### Changed
+- **Removed the `cdn.tailwindcss.com` dependency.** The CDN build is explicitly
+  not intended for production and caused a flash of unstyled content. Styling is
+  now a self-contained stylesheet, so the UI has **no runtime network
+  dependencies** and renders offline.
+- Avatar colours now use an FNV-1a hash, so sequential peer IDs get visibly
+  distinct hues instead of near-identical ones.
+- Message composer is a `<textarea>` (was `<input>`) to support multi-line text.
+- Errors surface as non-blocking toasts on the dashboard; the auth page keeps an
+  inline alert with a shake animation.
+
+### Fixed
+- Oversized download glyph in file cards squashing long filenames.
+- Account avatar disappearing from the mobile header.
+
 ## [1.3.0] — 2026-08-14 — Photos, files & live refresh
 
 ### Added

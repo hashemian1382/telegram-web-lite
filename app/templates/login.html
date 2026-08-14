@@ -1,40 +1,93 @@
 {% extends "base.html" %}
 {% block title %}Sign in — Telegram Web Lite{% endblock %}
 {% block content %}
-<div class="flex flex-1 items-center justify-center p-4" data-page="login">
-    <div class="w-full max-w-md">
-        <h1 class="text-2xl font-bold text-center mb-1">✈️ Telegram Web Lite</h1>
-        <p class="text-center text-gray-500 mb-6">Sign in to your account to continue</p>
+<div class="aurora" aria-hidden="true">
+    <span class="blob blob-1"></span>
+    <span class="blob blob-2"></span>
+    <span class="blob blob-3"></span>
+</div>
 
-        <div id="message" class="hidden mb-4"></div>
+<main class="auth-page" data-page="login">
+    <button type="button" id="theme-toggle" class="icon-btn theme-toggle"
+            style="position:fixed; top:16px; right:16px; z-index:50;"
+            title="Toggle theme" aria-label="Toggle colour theme">
+        <svg class="sun"><use href="#i-sun"></use></svg>
+        <svg class="moon"><use href="#i-moon"></use></svg>
+    </button>
 
-        <div class="bg-white rounded-lg shadow-md p-6">
-            <div class="flex mb-6 border-b">
-                <button id="tab-login" class="flex-1 pb-2 font-semibold border-b-2 border-blue-500 text-blue-600">Sign in</button>
-                <button id="tab-register" class="flex-1 pb-2 font-semibold border-b-2 border-transparent text-gray-500">Create account</button>
+    <div class="auth-shell">
+        <div class="auth-brand">
+            <div class="auth-logo"><svg><use href="#i-plane"></use></svg></div>
+            <h1 class="auth-title">Telegram Web Lite</h1>
+            <p class="auth-subtitle" id="auth-subtitle">Sign in to your account to continue</p>
+        </div>
+
+        <div class="auth-card">
+            <div id="message" class="hidden"></div>
+
+            <div class="seg" data-active="login" role="tablist" aria-label="Authentication mode">
+                <span class="seg-thumb" aria-hidden="true"></span>
+                <button type="button" id="tab-login" class="seg-btn" role="tab"
+                        aria-selected="true" aria-controls="login-form">Sign in</button>
+                <button type="button" id="tab-register" class="seg-btn" role="tab"
+                        aria-selected="false" aria-controls="register-form">Create account</button>
             </div>
 
-            <form id="login-form" class="space-y-4">
-                <input name="username" type="text" placeholder="Username" required autocomplete="username"
-                       class="w-full p-2.5 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <input name="password" type="password" placeholder="Password" required autocomplete="current-password"
-                       class="w-full p-2.5 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold p-2.5 rounded transition">
-                    Sign in
-                </button>
+            <!-- ── Sign in ─────────────────────────────────────── -->
+            <form id="login-form" class="auth-form" role="tabpanel" aria-labelledby="tab-login" novalidate>
+                <div class="field">
+                    <input class="field-input" id="login-username" name="username" type="text"
+                           placeholder=" " required autocomplete="username" spellcheck="false">
+                    <label class="field-label" for="login-username">Username</label>
+                </div>
+
+                <div class="field">
+                    <input class="field-input has-action" id="login-password" name="password" type="password"
+                           placeholder=" " required autocomplete="current-password">
+                    <label class="field-label" for="login-password">Password</label>
+                    <button type="button" class="field-action" data-reveal="login-password"
+                            title="Show password" aria-label="Show password">
+                        <svg class="eye-on"><use href="#i-eye"></use></svg>
+                        <svg class="eye-off"><use href="#i-eye-off"></use></svg>
+                    </button>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Sign in</button>
             </form>
 
-            <form id="register-form" class="space-y-4 hidden">
-                <input name="username" type="text" placeholder="Username (3–50 chars, letters/digits/._-)" required autocomplete="username"
-                       class="w-full p-2.5 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <input name="password" type="password" placeholder="Password (min. 8 characters)" required minlength="8" autocomplete="new-password"
-                       class="w-full p-2.5 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold p-2.5 rounded transition">
-                    Create account
-                </button>
-                <p class="text-xs text-gray-500">After creating your account, sign in — then link your Telegram number from the dashboard.</p>
+            <!-- ── Create account ──────────────────────────────── -->
+            <form id="register-form" class="auth-form hidden" role="tabpanel" aria-labelledby="tab-register" novalidate>
+                <div class="field">
+                    <input class="field-input" id="reg-username" name="username" type="text"
+                           placeholder=" " required autocomplete="username" spellcheck="false"
+                           pattern="[A-Za-z0-9_.\-]{3,50}" minlength="3" maxlength="50">
+                    <label class="field-label" for="reg-username">Username</label>
+                    <small class="field-hint">3–50 characters — letters, digits, and <code>. _ -</code></small>
+                </div>
+
+                <div class="field">
+                    <input class="field-input has-action" id="reg-password" name="password" type="password"
+                           placeholder=" " required minlength="8" maxlength="128" autocomplete="new-password">
+                    <label class="field-label" for="reg-password">Password</label>
+                    <button type="button" class="field-action" data-reveal="reg-password"
+                            title="Show password" aria-label="Show password">
+                        <svg class="eye-on"><use href="#i-eye"></use></svg>
+                        <svg class="eye-off"><use href="#i-eye-off"></use></svg>
+                    </button>
+                    <div class="strength" id="pwd-strength" data-level="0" aria-hidden="true">
+                        <div class="strength-track"><span></span><span></span><span></span><span></span></div>
+                        <small class="strength-text" id="pwd-strength-text">Use at least 8 characters</small>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success btn-block">Create account</button>
             </form>
+
+            <p class="auth-foot">
+                After creating your account, sign in — then link your<br>
+                Telegram number from the dashboard.
+            </p>
         </div>
     </div>
-</div>
+</main>
 {% endblock %}
