@@ -158,7 +158,17 @@ class TelegramManager:
     ) -> list[dict[str, Any]]:
         """Fetch the user's chat list using a saved StringSession."""
         api_id, api_hash = _resolve_credentials(api_id, api_hash)
-        client = TelegramClient(StringSession(session_string), api_id, api_hash)
+        try:
+            # A malformed/corrupted stored string raises here (base64/struct
+            # errors) — treat it the same as an expired session so the caller
+            # can clear it and ask the user to re-link.
+            client = TelegramClient(StringSession(session_string or ""), api_id, api_hash)
+        except Exception as exc:
+            logger.warning("Stored session string is unusable: %s", exc)
+            raise TelegramAPIError(
+                "Stored Telegram session is no longer usable — link your account again.",
+                status_code=401,
+            ) from exc
         try:
             await client.connect()
             if not await client.is_user_authorized():

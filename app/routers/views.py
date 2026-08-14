@@ -1,6 +1,6 @@
 """HTML pages and lightweight operational endpoints."""
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from app import __version__
 from app.core.templating import templates
@@ -9,12 +9,18 @@ router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
-async def home_page(request: Request) -> HTMLResponse:
+async def home_page(request: Request) -> Response:
+    # No account session → straight to the sign-in page.
+    if not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse(request, "index.html")
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request) -> HTMLResponse:
+async def login_page(request: Request) -> Response:
+    # Already signed in → skip the login form entirely.
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse(request, "login.html")
 
 

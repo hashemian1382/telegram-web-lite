@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.1] — 2026-08-14 — Zero-hassle session persistence
+
+### Fixed
+- A corrupted/revoked stored Telegram session could previously surface as a
+  raw 500 (unparsable session string) or a dangling 401 that required manual
+  DB cleanup.
+
+### Changed
+- `GET /api/chats/` now auto-clears an invalid stored session (401 from
+  Telegram) and returns `{"telegram_linked": false}` so the UI instantly shows
+  the link card again. Transient errors (network, flood-wait, missing API
+  credentials) never touch the stored session.
+- Server-side page redirects: `/` → `/login` when signed out, `/login` → `/`
+  when already signed in — once linked, returning users sign in with just
+  username + password and land directly on their chats.
+
 ## [1.1.0] — 2026-08-14 — Refactor & dependency refresh
 
 ### Fixed
