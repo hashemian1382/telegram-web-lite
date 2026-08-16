@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% block title %}Telegram Web Lite — open-source FastAPI + Telethon web client{% endblock %}
+{% block content %}
+
+<style>
+    .lp {
+        --lp-fg: #0f172a;
+        --lp-muted: #5b6b82;
+        --lp-card: #ffffff;
+        --lp-line: #e3e9f2;
+        --lp-accent: #3390ec;
+        --lp-bg1: #eef4fd;
+        --lp-bg2: #f7fafe;
+        min-height: 100vh;
+        background:
+            radial-gradient(1100px 520px at 12% -8%, var(--lp-bg1), transparent 60%),
+            radial-gradient(900px 460px at 92% 4%, #e9f7f1, transparent 55%),
+            var(--lp-bg2);
+        color: var(--lp-fg);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+    }
+    [data-theme="dark"] .lp {
+        --lp-fg: #e7edf6;
+        --lp-muted: #94a6bd;
+        --lp-card: #16202c;
+        --lp-line: #24313f;
+        --lp-bg1: #14283f;
+        --lp-bg2: #0e1621;
+    }
+
+    .lp-wrap { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
+
+    .lp-nav {
+        display: flex; align-items: center; gap: 12px;
+        padding: 20px 0 8px;
+    }
+    .lp-logo {
+        display: flex; align-items: center; gap: 10px;
+        font-weight: 700; font-size: 1.05rem; letter-spacing: -.01em;
+    }
+    .lp-logo .mark {
+        width: 34px; height: 34px; border-radius: 10px;
+        background: linear-gradient(140deg, #3390ec, #1d6fd0);
+        display: grid; place-items: center; color: #fff;
+        box-shadow: 0 6px 16px rgba(51,144,236,.32);
+    }
+    .lp-logo svg { width: 19px; height: 19px; }
+    .lp-nav-links { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .lp-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 17px; border-radius: 10px;
+        font-size: .9rem; font-weight: 600; text-decoration: none;
+        border: 1px solid transparent; cursor: pointer;
+        transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+    }
+    .lp-btn:active { transform: translateY(1px); }
+    .lp-btn-primary { background: var(--lp-accent); color: #fff; box-shadow: 0 6px 18px rgba(51,144,236,.3); }
+    .lp-btn-primary:hover { background: #2b7fd4; }
+    .lp-btn-ghost { color: var(--lp-fg); border-color: var(--lp-line); background: var(--lp-card); }
+    .lp-btn-ghost:hover { border-color: #b9c8dc; }
+    .lp-btn svg { width: 16px; height: 16px; }
+
+    .lp-hero { padding: 60px 0 28px; display: grid; gap: 34px; grid-template-columns: 1.05fr .95fr; align-items: center; }
+    @media (max-width: 880px) { .lp-hero { grid-template-columns: 1fr; padding-top: 34px; } }
+
+    .lp-badge {
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 6px 13px; border-radius: 999px;
+        background: rgba(51,144,236,.1); color: #1f6fc4;
+        border: 1px solid rgba(51,144,236,.22);
+        font-size: .78rem; font-weight: 600; letter-spacing: .01em;
+    }
+    [data-theme="dark"] .lp-badge { color: #7bb8f5; background: rgba(51,144,236,.14); }
+
+    .lp-h1 {
+        margin: 18px 0 0; font-size: clamp(2.05rem, 5vw, 3.1rem);
+        line-height: 1.1; letter-spacing: -.03em; font-weight: 800;
+    }
+    .lp-h1 .grad {
+        background: linear-gradient(100deg, #3390ec, #17b394);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .lp-sub { margin: 18px 0 0; font-size: 1.05rem; line-height: 1.65; color: var(--lp-muted); max-width: 33em; }
+    .lp-cta { display: flex; gap: 11px; margin-top: 28px; flex-wrap: wrap; }
+
+    .lp-stack { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 30px; }
+    .lp-chip {
+        padding: 5px 11px; border-radius: 7px; font-size: .78rem; font-weight: 600;
+        background: var(--lp-card); border: 1px solid var(--lp-line); color: var(--lp-muted);
+    }
+
+    .lp-mock {
+        border-radius: 16px; overflow: hidden; background: var(--lp-card);
+        border: 1px solid var(--lp-line);
+        box-shadow: 0 26px 60px -22px rgba(15,32,60,.34);
+    }
+    .lp-mock-bar {
+        display: flex; align-items: center; gap: 7px;
+        padding: 11px 14px; border-bottom: 1px solid var(--lp-line);
+        background: linear-gradient(var(--lp-card), transparent);
+    }
+    .lp-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .lp-mock-body { padding: 18px; display: flex; flex-direction: column; gap: 11px; }
+    .bub { max-width: 78%; padding: 10px 14px; border-radius: 15px; font-size: .87rem; line-height: 1.45; }
+    .bub-in  { align-self: flex-start; background: #f0f3f8; color: #16202c; border-bottom-left-radius: 5px; }
+    .bub-out { align-self: flex-end; background: linear-gradient(135deg, #3390ec, #2b7fd4); color: #fff; border-bottom-right-radius: 5px; }
+    [data-theme="dark"] .bub-in { background: #202c3a; color: #dce6f2; }
+    .bub-meta { display: block; font-size: .68rem; opacity: .65; margin-top: 4px; }
+
+    .lp-section { padding: 52px 0 10px; }
+    .lp-h2 { font-size: 1.5rem; font-weight: 750; letter-spacing: -.02em; margin: 0 0 6px; }
+    .lp-lead { color: var(--lp-muted); margin: 0 0 26px; font-size: .96rem; }
+
+    .lp-grid { display: grid; gap: 15px; grid-template-columns: repeat(3, 1fr); }
+    @media (max-width: 860px) { .lp-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .lp-grid { grid-template-columns: 1fr; } }
+
+    .lp-card {
+        background: var(--lp-card); border: 1px solid var(--lp-line);
+        border-radius: 13px; padding: 20px;
+        transition: transform .14s ease, border-color .14s ease;
+    }
+    .lp-card:hover { transform: translateY(-2px); border-color: #b9c8dc; }
+    .lp-card h3 { margin: 12px 0 7px; font-size: .98rem; font-weight: 700; }
+    .lp-card p { margin: 0; font-size: .87rem; line-height: 1.6; color: var(--lp-muted); }
+    .lp-ico {
+        width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center;
+        background: rgba(51,144,236,.1); color: var(--lp-accent);
+    }
+    .lp-ico svg { width: 19px; height: 19px; }
+
+    .lp-api {
+        background: var(--lp-card); border: 1px solid var(--lp-line);
+        border-radius: 13px; overflow: hidden; margin-top: 6px;
+    }
+    .lp-api table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .lp-api th, .lp-api td { padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--lp-line); }
+    .lp-api th { font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--lp-muted); font-weight: 700; }
+    .lp-api tr:last-child td { border-bottom: 0; }
+    .lp-api code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .84rem; }
+    .verb { font-weight: 700; font-size: .74rem; padding: 2px 7px; border-radius: 5px; }
+    .verb-get { background: rgba(23,179,148,.14); color: #0e8f74; }
+    .verb-post { background: rgba(51,144,236,.14); color: #1f6fc4; }
+
+    .lp-foot {
+        margin-top: 54px; padding: 26px 0 40px; border-top: 1px solid var(--lp-line);
+        display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+        font-size: .84rem; color: var(--lp-muted);
+    }
+    .lp-foot a { color: var(--lp-accent); text-decoration: none; }
+    .lp-foot a:hover { text-decoration: underline; }
+    .lp-foot .sep { margin-left: auto; }
+</style>
+
+<div class="lp" data-page="landing">
+    <div class="lp-wrap">
+
+        <nav class="lp-nav">
+            <div class="lp-logo">
+                <span class="mark"><svg><use href="#i-plane"></use></svg></span>
+                <span>Telegram Web Lite</span>
+            </div>
+            <div class="lp-nav-links">
+                <a class="lp-btn lp-btn-ghost" href="https://github.com/hashemian1382/telegram-web-lite"
+                   target="_blank" rel="noopener">Source code</a>
+                <a class="lp-btn lp-btn-ghost" href="/docs">API docs</a>
+                <a class="lp-btn lp-btn-primary" href="/login">Sign in</a>
+            </div>
+        </nav>
+
+        <section class="lp-hero">
+            <div>
+                <span class="lp-badge">
+                    <svg style="width:13px;height:13px"><use href="#i-check"></use></svg>
+                    Open source &middot; MIT-friendly &middot; No build step
+                </span>
+
+                <h1 class="lp-h1">
+                    A <span class="grad">minimal Telegram client</span><br>
+                    built with FastAPI &amp; Telethon
+                </h1>
+
+                <p class="lp-sub">
+                    A self-hosted, server-rendered web client written in Python. No bundler, no CDN,
+                    no runtime network dependencies &mdash; just Jinja2 templates, a hand-rolled CSS
+                    design system, and vanilla JavaScript. Telegram sessions are stored as portable
+                    <code>StringSession</code> values in PostgreSQL, so they survive restarts and redeploys.
+                </p>
+
+                <div class="lp-cta">
+                    <a class="lp-btn lp-btn-primary" href="/login">
+                        Create an account
+                        <svg><use href="#i-send"></use></svg>
+                    </a>
+                    <a class="lp-btn lp-btn-ghost" href="https://github.com/hashemian1382/telegram-web-lite"
+                       target="_blank" rel="noopener">Read the code on GitHub</a>
+                </div>
+
+                <div class="lp-stack">
+                    <span class="lp-chip">Python 3.13</span>
+                    <span class="lp-chip">FastAPI</span>
+                    <span class="lp-chip">Telethon</span>
+                    <span class="lp-chip">SQLAlchemy 2.0</span>
+                    <span class="lp-chip">PostgreSQL</span>
+                    <span class="lp-chip">Jinja2</span>
+                    <span class="lp-chip">Argon2id</span>
+                </div>
+            </div>
+
+            <div class="lp-mock" aria-hidden="true">
+                <div class="lp-mock-bar">
+                    <span class="lp-dot" style="background:#ff5f57"></span>
+                    <span class="lp-dot" style="background:#febc2e"></span>
+                    <span class="lp-dot" style="background:#28c840"></span>
+                </div>
+                <div class="lp-mock-body">
+                    <div class="bub bub-in">
+                        Deployed the new build to production 🚀
+                        <span class="bub-meta">09:41</span>
+                    </div>
+                    <div class="bub bub-out">
+                        Nice — health check is green on my side.
+                        <span class="bub-meta">09:42 ✓✓</span>
+                    </div>
+                    <div class="bub bub-in">
+                        Sessions survived the redeploy this time?
+                        <span class="bub-meta">09:42</span>
+                    </div>
+                    <div class="bub bub-out">
+                        Yep. StringSession in Postgres — nothing on disk.
+                        <span class="bub-meta">09:43 ✓✓</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="lp-section">
+            <h2 class="lp-h2">What's inside</h2>
+            <p class="lp-lead">Design notes for anyone reading the source.</p>
+
+            <div class="lp-grid">
+                <article class="lp-card">
+                    <div class="lp-ico"><svg><use href="#i-shield"></use></svg></div>
+                    <h3>Argon2id password hashing</h3>
+                    <p>Accounts use <code>pwdlib</code> with Argon2id and automatic re-hash on login.
+                       Sessions ride in signed, HttpOnly cookies via Starlette's SessionMiddleware.</p>
+                </article>
+
+                <article class="lp-card">
+                    <div class="lp-ico"><svg><use href="#i-key"></use></svg></div>
+                    <h3>Portable Telegram sessions</h3>
+                    <p>Telethon <code>StringSession</code> values live in the database instead of
+                       <code>.session</code> files — the app is fully stateless on an ephemeral filesystem.</p>
+                </article>
+
+                <article class="lp-card">
+                    <div class="lp-ico"><svg><use href="#i-refresh"></use></svg></div>
+                    <h3>Pooled connections</h3>
+                    <p>One Telethon client per user is pooled in-process with an idle-connection reaper,
+                       which is what keeps navigation snappy between requests.</p>
+                </article>
+
+                <article class="lp-card">
+                    <div class="lp-ico"><svg><use href="#i-doc"></use></svg></div>
+                    <h3>Streamed media</h3>
+                    <p>Files stream straight from Telegram to the browser — nothing is buffered on
+                       the server or written to disk.</p>
+                </article>
+
+                <article class="lp-card">
+                    <div class="lp-ico"><svg><use href="#i-search"></use></svg></div>
+                    <h3>Curated chat list</h3>
+                    <p>No full dialog dump. You add chats explicitly by <code>@username</code> or numeric
+                       ID, and only those are persisted to your account.</p>
+                </article>
+
+                <article class="lp-card">
+                    <div class="lp-ico"><svg><use href="#i-sun"></use></svg></div>
+                    <h3>Zero-dependency frontend</h3>
+                    <p>One stylesheet, one JS file, an inline SVG sprite. No Tailwind CDN, no external
+                       fonts — it renders fine offline and behind a strict CSP.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="lp-section">
+            <h2 class="lp-h2">HTTP API</h2>
+            <p class="lp-lead">Typed Pydantic v2 schemas throughout. Full interactive reference at <a href="/docs" style="color:var(--lp-accent)">/docs</a>.</p>
+
+            <div class="lp-api">
+                <table>
+                    <thead>
+                        <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><span class="verb verb-post">POST</span></td><td><code>/api/auth/register</code></td><td>Create a web account</td></tr>
+                        <tr><td><span class="verb verb-post">POST</span></td><td><code>/api/auth/login</code></td><td>Sign in, sets the session cookie</td></tr>
+                        <tr><td><span class="verb verb-post">POST</span></td><td><code>/api/auth/telegram/send-code</code></td><td>Request a Telegram login code</td></tr>
+                        <tr><td><span class="verb verb-get">GET</span></td><td><code>/api/chats/</code></td><td>List the chats you've added</td></tr>
+                        <tr><td><span class="verb verb-get">GET</span></td><td><code>/api/chats/{id}/messages</code></td><td>Last 20 messages, or newer than <code>after_id</code></td></tr>
+                        <tr><td><span class="verb verb-post">POST</span></td><td><code>/api/chats/{id}/files</code></td><td>Upload a photo or document</td></tr>
+                        <tr><td><span class="verb verb-get">GET</span></td><td><code>/healthz</code></td><td>Liveness probe</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="lp-section">
+            <h2 class="lp-h2">Run it yourself</h2>
+            <p class="lp-lead">
+                This instance is a public demo of the project. It is non-commercial, has no
+                advertising, and is not affiliated with or endorsed by Telegram. You supply your
+                own Telegram API credentials from
+                <a href="https://my.telegram.org/apps" target="_blank" rel="noopener"
+                   style="color:var(--lp-accent)">my.telegram.org/apps</a>,
+                or use the instance defaults.
+            </p>
+
+            <div class="lp-api" style="padding:18px 20px">
+<pre style="margin:0;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.84rem;line-height:1.7;color:var(--lp-muted)">git clone https://github.com/hashemian1382/telegram-web-lite
+cd telegram-web-lite
+
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+
+cp .env.example .env    <span style="opacity:.6"># set SECRET_KEY + Telegram credentials</span>
+python -m app.main</pre>
+            </div>
+        </section>
+
+        <footer class="lp-foot">
+            <span>Telegram Web Lite &mdash; a personal, non-commercial open-source project.</span>
+            <span class="sep"></span>
+            <a href="https://github.com/hashemian1382/telegram-web-lite" target="_blank" rel="noopener">GitHub</a>
+            <a href="/docs">API</a>
+            <a href="/healthz">Status</a>
+            <a href="/login">Sign in</a>
+        </footer>
+
+    </div>
+</div>
+
+{% endblock %}

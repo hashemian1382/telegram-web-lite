@@ -52,7 +52,7 @@ app.add_middleware(
     secret_key=settings.SECRET_KEY,
     session_cookie="twl_session",
     same_site="lax",
-    https_only=False,  # set True behind TLS in production
+    https_only=not settings.DEBUG,
 )
 
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")

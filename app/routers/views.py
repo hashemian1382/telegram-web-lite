@@ -10,10 +10,9 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
 async def home_page(request: Request) -> Response:
-    # No account session → straight to the sign-in page.
-    if not request.session.get("user_id"):
-        return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "index.html")
+    if request.session.get("user_id"):
+        return templates.TemplateResponse(request, "index.html")
+    return templates.TemplateResponse(request, "landing.html")
 
 
 @router.get("/login", response_class=HTMLResponse)
